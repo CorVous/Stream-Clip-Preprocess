@@ -125,6 +125,14 @@ class ClipExtractor:
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=config.subprocess_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return ClipResult(
+                success=False,
+                output_path=None,
+                moment_clip_name=moment.clip_name,
+                error=f"ffmpeg timed out after {config.subprocess_timeout}s",
             )
         except OSError as exc:
             return ClipResult(

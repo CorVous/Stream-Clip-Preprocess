@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess  # noqa: S404
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -283,3 +284,65 @@ class TestClipExtractor:
         assert result.output_path is not None
         assert "my_clip" in result.output_path.name
         assert result.output_path.suffix == ".mp4"
+
+    def test_subprocess_timeout_default(self, tmp_path: Path) -> None:
+        """Test that ClipConfig has a default subprocess_timeout."""
+        config = ClipConfig(output_dir=tmp_path)
+        assert config.subprocess_timeout == 300
+
+    def test_subprocess_timeout_passed_to_run(self, tmp_path: Path) -> None:
+        """Test that subprocess.run receives the timeout from ClipConfig."""
+        fake_ffmpeg = "/usr/bin/ffmpeg"
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+
+        config = ClipConfig(output_dir=tmp_path, padding=5, subprocess_timeout=120)
+        moment = Moment(start=10.0, end=20.0, summary="Test", clip_name="test")
+
+        with (
+            patch(
+                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                return_value=fake_ffmpeg,
+            ),
+            patch("stream_clip_preprocess.clipper.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stderr="")
+            extractor = ClipExtractor()
+            extractor.extract_clip(
+                moment=moment,
+                video_path=video_path,
+                config=config,
+                video_duration=300.0,
+            )
+
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("timeout") == 120
+
+    def test_subprocess_timeout_returns_failure(self, tmp_path: Path) -> None:
+        """Test that TimeoutExpired from subprocess returns a failure result."""
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+        config = ClipConfig(output_dir=tmp_path, padding=5, subprocess_timeout=1)
+        moment = Moment(start=10.0, end=20.0, summary="Test", clip_name="timeout_clip")
+
+        with (
+            patch(
+                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                return_value="/usr/bin/ffmpeg",
+            ),
+            patch(
+                "stream_clip_preprocess.clipper.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1),
+            ),
+        ):
+            extractor = ClipExtractor()
+            result = extractor.extract_clip(
+                moment=moment,
+                video_path=video_path,
+                config=config,
+                video_duration=300.0,
+            )
+
+        assert result.success is False
+        assert result.error is not None
+        assert "timed out" in result.error.lower() or "timeout" in result.error.lower()
