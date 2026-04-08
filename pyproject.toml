@@ -136,3 +136,10 @@ ignore = [
 
 [tool.ruff.format]
 preview = true # No cowards allowed!
+
+[[tool.ty.overrides]]
+# customtkinter has no type stubs; suppress type errors in GUI code
+include = ["src/stream_clip_preprocess/gui/**"]
+
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
