@@ -130,6 +130,9 @@ ignore = [
 "tests/**/*.py" = [
     "S101", # Allow assert in tests
 ]
+"src/stream_clip_preprocess/llm/local.py" = [
+    "ANN401", # Any is needed for optional llama-cpp-python dependency
+]
 
 [tool.ruff.format]
 preview = true # No cowards allowed!
