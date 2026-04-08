@@ -177,3 +177,21 @@ class TestVideoDownloader:
         assert "/" not in safe
         assert ":" not in safe
         assert '"' not in safe
+
+    def test_sanitize_filename_empty_string(self) -> None:
+        """Test filename sanitization with empty string returns empty."""
+        downloader = VideoDownloader()
+        result = downloader.sanitize_filename("")
+        assert not result
+
+    def test_sanitize_filename_unicode(self) -> None:
+        """Test filename sanitization preserves Unicode characters."""
+        downloader = VideoDownloader()
+        result = downloader.sanitize_filename("video_cafe_moment")
+        assert "cafe" in result
+
+    def test_sanitize_filename_long_name(self) -> None:
+        """Test filename sanitization with very long name."""
+        downloader = VideoDownloader()
+        result = downloader.sanitize_filename("a" * 300)
+        assert len(result) == 300

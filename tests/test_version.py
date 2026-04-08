@@ -1,10 +1,7 @@
 """Tests for version management and version command."""
 
 import re
-import subprocess  # noqa: S404
-import sys
 
-import stream_clip_preprocess
 from stream_clip_preprocess import __version__
 
 
@@ -27,27 +24,6 @@ def test_version_format() -> None:
     )
 
 
-def test_version_subcommand() -> None:
-    """Test version subcommand displays version."""
-    package_name = stream_clip_preprocess.__package__ or "stream_clip_preprocess"
-    result = subprocess.run(  # noqa: S603
-        [sys.executable, "-m", package_name, "version"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert __version__ in result.stdout
-
-
-def test_version_flag() -> None:
-    """Test --version flag displays version."""
-    package_name = stream_clip_preprocess.__package__ or "stream_clip_preprocess"
-    result = subprocess.run(  # noqa: S603
-        [sys.executable, "-m", package_name, "--version"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert __version__ in result.stdout
+# NOTE: Subprocess-based version tests (test_version_subcommand, test_version_flag)
+# were removed — they duplicated test_integration.py::test_cli_version_subcommand
+# and test_integration.py::test_cli_version_flag.

@@ -102,3 +102,16 @@ class LLMConfig:
     api_key: str | None = None
     model_name: str | None = None
     context_window: int = field(default=8192)
+
+    def __post_init__(self) -> None:
+        """Validate required fields based on backend type."""
+        if self.backend == LLMBackend.LOCAL and self.model_path is None:
+            msg = "model_path is required for LOCAL backend"
+            raise ValueError(msg)
+        if self.backend == LLMBackend.OPENROUTER:
+            if not self.api_key:
+                msg = "api_key is required for OPENROUTER backend"
+                raise ValueError(msg)
+            if not self.model_name:
+                msg = "model_name is required for OPENROUTER backend"
+                raise ValueError(msg)

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from stream_clip_preprocess.llm.base import (
+    _SYSTEM_PROMPT,
     LLMAnalyzer,
     LLMError,
     parse_moments_from_response,
@@ -19,12 +20,6 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-_SYSTEM_PROMPT = (
-    "You are an expert stream clip editor. Given a timestamped transcript, "
-    "identify the most notable, funny, or exciting moments. Return ONLY a JSON "
-    "array with fields: start (float), end (float), summary (string), "
-    "clip_name (snake_case string). Moments should be under 3 minutes."
-)
 
 
 class OpenRouterBackend(LLMAnalyzer):
@@ -83,7 +78,12 @@ class OpenRouterBackend(LLMAnalyzer):
             msg = f"OpenRouter API call failed: {exc}"
             raise LLMError(msg) from exc
 
-        content = resp.json()["choices"][0]["message"]["content"]
+        try:
+            content = resp.json()["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            msg = f"Unexpected OpenRouter response format: {exc}"
+            raise LLMError(msg) from exc
+
         try:
             return parse_moments_from_response(content)
         except ValueError as exc:

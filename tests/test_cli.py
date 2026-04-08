@@ -18,19 +18,6 @@ def test_create_parser_exists() -> None:
     assert isinstance(parser, argparse.ArgumentParser)
 
 
-def test_parser_has_verbose_argument() -> None:
-    """Test that parser has -v/--verbose argument."""
-    parser = create_parser()
-
-    # Test -v flag
-    args = parser.parse_args(["-v", "version"])
-    assert hasattr(args, "verbose")
-
-    # Test --verbose flag
-    args = parser.parse_args(["--verbose", "version"])
-    assert hasattr(args, "verbose")
-
-
 def test_parser_verbose_count_based() -> None:
     """Test that -v can be repeated for increased verbosity."""
     parser = create_parser()
@@ -41,11 +28,11 @@ def test_parser_verbose_count_based() -> None:
 
     # Single -v
     args = parser.parse_args(["-v", "version"])
-    assert args.verbose >= 1
+    assert args.verbose == 1
 
     # Double -vv
     args = parser.parse_args(["-vv", "version"])
-    assert args.verbose >= 2
+    assert args.verbose == 2
 
 
 def test_parser_has_version_flag() -> None:
@@ -76,6 +63,19 @@ def test_parser_no_subcommand_shows_help() -> None:
 def test_main_function_exists() -> None:
     """Test that main() entry point function exists."""
     assert callable(main)
+
+
+def test_main_returns_one_on_command_exception() -> None:
+    """Test that main() returns 1 when the command raises an exception."""
+    with patch("stream_clip_preprocess.cli.create_parser") as mock_create_parser:
+        mock_parser = mock_create_parser.return_value
+        mock_args = mock_parser.parse_args.return_value
+        mock_args.command = "test"
+        mock_args.verbose = 0
+        mock_args.func.side_effect = RuntimeError("boom")
+
+        result = main()
+        assert result == 1
 
 
 def test_setup_logging_exists() -> None:

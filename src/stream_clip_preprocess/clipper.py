@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-import re
 import subprocess  # noqa: S404
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import imageio_ffmpeg  # type: ignore[import-untyped]
+
+from stream_clip_preprocess.sanitize import sanitize_filename
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,9 +19,6 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# Characters not allowed in filenames across platforms
-_UNSAFE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]+')
-
 
 def sanitize_clip_filename(name: str) -> str:
     """Replace unsafe filename characters with underscores.
@@ -28,8 +26,7 @@ def sanitize_clip_filename(name: str) -> str:
     :param name: Raw clip name
     :return: Safe filename string (falls back to 'clip' if empty)
     """
-    safe = _UNSAFE_RE.sub("_", name).strip("_")
-    return safe or "clip"
+    return sanitize_filename(name, fallback="clip")
 
 
 @dataclass
@@ -169,8 +166,9 @@ class ClipExtractor:
         :return: List of ClipResult, one per selected moment
         """
         results = []
-        selected = [m for m in moments if m.selected]
-        for moment in selected:
+        for moment in moments:
+            if not moment.selected:
+                continue
             result = self.extract_clip(
                 moment=moment,
                 video_path=video_path,

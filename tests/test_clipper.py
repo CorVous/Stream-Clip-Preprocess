@@ -42,10 +42,30 @@ class TestSanitizeClipFilename:
         assert ":" not in result
         assert '"' not in result
 
-    def test_non_empty_result(self) -> None:
-        """Test that sanitize never returns empty string."""
+    def test_all_unsafe_chars_returns_fallback(self) -> None:
+        """Test that input with only unsafe chars returns 'clip' fallback."""
         result = sanitize_clip_filename("///")
-        assert len(result) > 0 or result == "clip"
+        assert result == "clip"
+
+    def test_all_whitespace_returns_fallback(self) -> None:
+        """Test that all-whitespace input returns 'clip' fallback."""
+        result = sanitize_clip_filename("   ")
+        assert result == "clip"
+
+    def test_unicode_preserved(self) -> None:
+        """Test that Unicode characters are preserved in filenames."""
+        result = sanitize_clip_filename("cafe_moment")
+        assert "cafe_moment" in result
+
+    def test_very_long_name(self) -> None:
+        """Test that very long names produce a non-empty result."""
+        result = sanitize_clip_filename("a" * 300)
+        assert len(result) > 0
+
+    def test_control_chars_only_returns_fallback(self) -> None:
+        """Test that input with only control characters returns fallback."""
+        result = sanitize_clip_filename("\x01\x02\x03")
+        assert result == "clip"
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +197,63 @@ class TestClipExtractor:
 
         assert result.success is False
         assert result.error is not None
+
+    def test_extract_all_empty_moments(self, tmp_path: Path) -> None:
+        """Test that extract_all with empty moments list returns empty."""
+        extractor = ClipExtractor()
+        config = ClipConfig(output_dir=tmp_path, padding=5)
+        results = extractor.extract_all(
+            moments=[],
+            video_path=tmp_path / "video.mp4",
+            config=config,
+            video_duration=300.0,
+        )
+        assert results == []
+
+    def test_extract_all_none_selected(self, tmp_path: Path) -> None:
+        """Test that extract_all with all deselected moments returns empty."""
+        extractor = ClipExtractor()
+        config = ClipConfig(output_dir=tmp_path, padding=5)
+        moments = [
+            Moment(start=10.0, end=20.0, summary="A", clip_name="a", selected=False),
+            Moment(start=30.0, end=40.0, summary="B", clip_name="b", selected=False),
+        ]
+        results = extractor.extract_all(
+            moments=moments,
+            video_path=tmp_path / "video.mp4",
+            config=config,
+            video_duration=300.0,
+        )
+        assert results == []
+
+    def test_extract_clip_oserror(self, tmp_path: Path) -> None:
+        """Test that OSError from subprocess returns failure result."""
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+        config = ClipConfig(output_dir=tmp_path, padding=5)
+        moment = Moment(start=10.0, end=20.0, summary="Test", clip_name="test")
+
+        with (
+            patch(
+                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                return_value="/nonexistent/ffmpeg",
+            ),
+            patch(
+                "stream_clip_preprocess.clipper.subprocess.run",
+                side_effect=OSError("No such file"),
+            ),
+        ):
+            extractor = ClipExtractor()
+            result = extractor.extract_clip(
+                moment=moment,
+                video_path=video_path,
+                config=config,
+                video_duration=300.0,
+            )
+
+        assert result.success is False
+        assert result.error is not None
+        assert "No such file" in result.error
 
     def test_output_filename_format(self, tmp_path: Path) -> None:
         """Test that output filename follows expected format."""

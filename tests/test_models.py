@@ -217,6 +217,21 @@ class TestLLMConfig:
         assert config.model_name == "meta-llama/llama-3.1-8b-instruct"
         assert config.model_path is None
 
+    def test_local_without_model_path_raises(self) -> None:
+        """Test that LOCAL backend requires model_path."""
+        with pytest.raises(ValueError, match="model_path"):
+            LLMConfig(backend=LLMBackend.LOCAL)
+
+    def test_openrouter_without_api_key_raises(self) -> None:
+        """Test that OPENROUTER backend requires api_key."""
+        with pytest.raises(ValueError, match="api_key"):
+            LLMConfig(backend=LLMBackend.OPENROUTER, model_name="test-model")
+
+    def test_openrouter_without_model_name_raises(self) -> None:
+        """Test that OPENROUTER backend requires model_name."""
+        with pytest.raises(ValueError, match="model_name"):
+            LLMConfig(backend=LLMBackend.OPENROUTER, api_key="sk-test")
+
     def test_llm_backend_enum_values(self) -> None:
         """Test LLMBackend enum has expected values."""
         assert LLMBackend.LOCAL is not None

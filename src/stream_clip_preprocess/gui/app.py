@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 import webbrowser
+from typing import TYPE_CHECKING
 
 import customtkinter as ctk  # type: ignore[import-untyped]
 
 from stream_clip_preprocess.gui import themes
 from stream_clip_preprocess.gui.state import AppState, run_in_background
+
+if TYPE_CHECKING:
+    from stream_clip_preprocess.models import Moment
 
 # Re-export for convenience
 __all__ = ["AppState", "MainApp", "launch", "run_in_background"]
@@ -32,7 +36,7 @@ class MainApp(ctk.CTk):
         self._state = AppState.IDLE
         self._video_info = None
         self._transcript_segments = None
-        self._moments: list = []
+        self._moments: list[Moment] = []
 
         self._build_ui()
 

@@ -148,6 +148,26 @@ Those are the highlights."""
         with pytest.raises(ValueError, match="parse"):
             parse_moments_from_response("not json at all")
 
+    def test_parse_missing_keys_raises(self) -> None:
+        """Test that missing required keys in moment data raises ValueError."""
+        # Missing summary and clip_name keys
+        response = json.dumps([{"start": 10.0, "end": 20.0}])
+        with pytest.raises(ValueError, match="Malformed moment data"):
+            parse_moments_from_response(response)
+
+    def test_parse_non_array_json_raises(self) -> None:
+        """Test that a JSON object (not array) raises a meaningful error."""
+        with pytest.raises((ValueError, TypeError)):
+            parse_moments_from_response('{"start": 10.0}')
+
+    def test_parse_string_number_coercion(self) -> None:
+        """Test that string values where floats expected raises ValueError."""
+        response = json.dumps([
+            {"start": "not_a_number", "end": 20.0, "summary": "X", "clip_name": "x"}
+        ])
+        with pytest.raises(ValueError, match="Malformed moment data"):
+            parse_moments_from_response(response)
+
     def test_moments_are_selected_by_default(self) -> None:
         """Test that parsed moments default to selected=True."""
         response = json.dumps([
@@ -214,6 +234,52 @@ class TestOpenRouterBackend:
 
         with patch("stream_clip_preprocess.llm.openrouter.httpx.post") as mock_post:
             mock_post.side_effect = httpx.HTTPError("connection failed")
+
+            backend = OpenRouterBackend(config)
+            with pytest.raises(LLMError):
+                backend.analyze(
+                    segments=[],
+                    stream_type="gaming",
+                    game_name="",
+                    clip_description="highlights",
+                )
+
+    def test_analyze_raises_on_malformed_response_missing_choices(self) -> None:
+        """Test that malformed API response (missing choices) raises LLMError."""
+        config = LLMConfig(
+            backend=LLMBackend.OPENROUTER,
+            api_key="sk-or-test",
+            model_name="test-model",
+        )
+
+        with patch("stream_clip_preprocess.llm.openrouter.httpx.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_resp.json.return_value = {"error": "something went wrong"}
+            mock_post.return_value = mock_resp
+
+            backend = OpenRouterBackend(config)
+            with pytest.raises(LLMError):
+                backend.analyze(
+                    segments=[],
+                    stream_type="gaming",
+                    game_name="",
+                    clip_description="highlights",
+                )
+
+    def test_analyze_raises_on_malformed_response_empty_choices(self) -> None:
+        """Test that malformed API response (empty choices) raises LLMError."""
+        config = LLMConfig(
+            backend=LLMBackend.OPENROUTER,
+            api_key="sk-or-test",
+            model_name="test-model",
+        )
+
+        with patch("stream_clip_preprocess.llm.openrouter.httpx.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_resp.json.return_value = {"choices": []}
+            mock_post.return_value = mock_resp
 
             backend = OpenRouterBackend(config)
             with pytest.raises(LLMError):

@@ -75,12 +75,10 @@ class TranscriptFetcher:
         """
         _logger.debug("Fetching transcript for video_id=%s", video_id)
         try:
+            kwargs: dict[str, list[str]] = {}
             if self.languages:
-                raw = YouTubeTranscriptApi.get_transcript(
-                    video_id, languages=self.languages
-                )
-            else:
-                raw = YouTubeTranscriptApi.get_transcript(video_id)
+                kwargs["languages"] = self.languages
+            raw = YouTubeTranscriptApi.get_transcript(video_id, **kwargs)
         except (NoTranscriptFound, VideoUnavailable) as exc:
             msg = f"No transcript available for video {video_id!r}"
             raise NoTranscriptError(msg) from exc

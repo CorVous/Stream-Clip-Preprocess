@@ -76,15 +76,19 @@ def parse_moments_from_response(response: str) -> list[Moment]:
         msg = f"Failed to parse LLM response as JSON: {exc}"
         raise ValueError(msg) from exc
 
-    return [
-        Moment(
-            start=float(item["start"]),
-            end=float(item["end"]),
-            summary=item["summary"],
-            clip_name=item["clip_name"],
-        )
-        for item in data
-    ]
+    try:
+        return [
+            Moment(
+                start=float(item["start"]),
+                end=float(item["end"]),
+                summary=item["summary"],
+                clip_name=item["clip_name"],
+            )
+            for item in data
+        ]
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = f"Malformed moment data in LLM response: {exc}"
+        raise ValueError(msg) from exc
 
 
 class LLMAnalyzer(abc.ABC):

@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from stream_clip_preprocess.llm.base import (
+    _SYSTEM_PROMPT,
     LLMAnalyzer,
     LLMError,
     parse_moments_from_response,
@@ -15,13 +16,6 @@ if TYPE_CHECKING:
     from stream_clip_preprocess.models import LLMConfig, Moment, TranscriptSegment
 
 _logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT = (
-    "You are an expert stream clip editor. Given a timestamped transcript, "
-    "identify the most notable, funny, or exciting moments. Return ONLY a JSON "
-    "array with fields: start (float), end (float), summary (string), "
-    "clip_name (snake_case string). Moments should be under 3 minutes."
-)
 
 
 class LocalBackend(LLMAnalyzer):
@@ -104,6 +98,9 @@ class LocalBackend(LLMAnalyzer):
                 temperature=0.1,
             )
             content = result["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            msg = f"Unexpected local LLM response format: {exc}"
+            raise LLMError(msg) from exc
         except Exception as exc:
             msg = f"Local inference failed: {exc}"
             raise LLMError(msg) from exc

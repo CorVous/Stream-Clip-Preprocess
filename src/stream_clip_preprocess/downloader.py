@@ -3,22 +3,19 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import yt_dlp  # type: ignore[import-untyped]
 
 from stream_clip_preprocess.models import VideoInfo
+from stream_clip_preprocess.sanitize import sanitize_filename
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
 _logger = logging.getLogger(__name__)
-
-# Characters not allowed in filenames on Windows/macOS/Linux
-_UNSAFE_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 @dataclass
@@ -127,4 +124,4 @@ class VideoDownloader:
         :param name: Raw filename string
         :return: Sanitized filename safe for all platforms
         """
-        return _UNSAFE_CHARS_RE.sub("_", name)
+        return sanitize_filename(name)
