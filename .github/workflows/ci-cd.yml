@@ -2,11 +2,11 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   release:
-    types: [ published ]
+    types: [published]
 
 jobs:
   lint-and-test:
@@ -14,63 +14,119 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history and tags for version detection
-      
+          fetch-depth: 0 # Fetch all history and tags for version detection
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      
+
       - name: Set up Python
         run: uv python install 3.13
-      
+
       - name: Install dependencies
         run: uv sync --dev
-      
+
       - name: Lint with ruff
         run: uv run ruff check
-      
+
       - name: Check formatting
         run: uv run ruff format --check
-      
+
       - name: Type check
         run: uv run ty check
-      
+
       - name: Run tests
         run: uv run pytest
-      
+
       - name: Security audit
         run: |
           # Just warnings for now...
-          uv audit --preview-features audit || true 
+          uv audit --preview-features audit || true
 
-  build-and-publish:
+  build-executables:
     needs: lint-and-test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release'
-    permissions:
-      contents: write  # Required for uploading release assets
+    if: github.event_name == 'release' || github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact_name: stream-clip-preprocess.exe
+            dist_path: dist/stream-clip-preprocess.exe
+          - os: macos-latest
+            platform: macos
+            artifact_name: stream-clip-preprocess-macos
+            dist_path: dist/Stream Clip Preprocess.app
+
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history and tags for version detection
-      
+          fetch-depth: 0
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      
+
       - name: Set up Python
         run: uv python install 3.13
-      
+
       - name: Install dependencies
         run: uv sync --dev
-      
-      - name: Build package
-        run: uv run python -m build
-      
+
+      - name: Install PyInstaller
+        run: uv pip install pyinstaller
+
+      - name: Build executable
+        run: uv run pyinstaller stream_clip_preprocess.spec --noconfirm
+
+      - name: Create macOS DMG
+        if: matrix.platform == 'macos'
+        run: |
+          brew install create-dmg || true
+          create-dmg \
+            --volname "Stream Clip Preprocess" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 425 120 \
+            "dist/Stream-Clip-Preprocess.dmg" \
+            "dist/Stream Clip Preprocess.app" || true
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.dist_path }}
+          if-no-files-found: warn
+
+  publish-release:
+    needs: build-executables
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: stream-clip-preprocess.exe
+          path: dist/
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: stream-clip-preprocess-macos
+          path: dist/
+
       - name: Upload artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
