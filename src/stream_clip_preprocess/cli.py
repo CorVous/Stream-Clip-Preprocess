@@ -9,16 +9,18 @@ import importlib.metadata
 import logging
 import sys
 
-from python_template import __version__
-from python_template.commands import version_cmd
+from stream_clip_preprocess import __version__
+from stream_clip_preprocess.commands import version_cmd
 
 # Get package name dynamically from installed metadata
 try:
-    _PACKAGE_METADATA = importlib.metadata.metadata(__package__ or "python_template")
+    _PACKAGE_METADATA = importlib.metadata.metadata(
+        __package__ or "stream_clip_preprocess"
+    )
     _CLI_NAME = _PACKAGE_METADATA["Name"]
 except (importlib.metadata.PackageNotFoundError, KeyError):
     # Fallback if metadata not available (e.g., editable install issues)
-    _CLI_NAME = "python-template"
+    _CLI_NAME = "stream-clip-preprocess"
 
 _logger = logging.getLogger(__name__)
 

@@ -6,10 +6,9 @@ import sys
 
 import pytest
 
-# Get package name dynamically - import from the actual package
-import python_template
+import stream_clip_preprocess
 
-_PACKAGE_NAME: str = python_template.__package__ or "python_template"
+_PACKAGE_NAME: str = stream_clip_preprocess.__package__ or "stream_clip_preprocess"
 
 
 def test_cli_help() -> None:
@@ -22,7 +21,6 @@ def test_cli_help() -> None:
     )
     assert result.returncode == 0
     assert "usage:" in result.stdout.lower()
-    # CLI name should appear in help output
 
 
 def test_cli_version_flag() -> None:
@@ -34,8 +32,6 @@ def test_cli_version_flag() -> None:
         check=False,
     )
     assert result.returncode == 0
-    # Version should start with semantic version format
-
     assert re.search(r"\d+\.\d+\.\d+", result.stdout), "Version not found in output"
 
 
@@ -48,8 +44,6 @@ def test_cli_version_subcommand() -> None:
         check=False,
     )
     assert result.returncode == 0
-    # Version should start with semantic version format
-
     assert re.search(r"\d+\.\d+\.\d+", result.stdout), "Version not found in output"
 
 
@@ -74,7 +68,6 @@ def test_cli_very_verbose_flag() -> None:
         check=False,
     )
     assert result.returncode == 0
-    # DEBUG logging should show more details
     assert "DEBUG:" in result.stderr or "DEBUG:" in result.stdout
 
 
@@ -116,32 +109,25 @@ def test_version_subcommand_help() -> None:
 
 def test_library_import_no_cli_execution() -> None:
     """Test that importing package doesn't execute CLI code."""
-    # This test runs in subprocess to ensure clean import
     code = """
 import sys
 import io
 
-# Capture stdout/stderr
 old_stdout = sys.stdout
 old_stderr = sys.stderr
 sys.stdout = io.StringIO()
 sys.stderr = io.StringIO()
 
-# Import package
-from python_template import __version__
+from stream_clip_preprocess import __version__
 
-# Get captured output
 stdout_value = sys.stdout.getvalue()
 stderr_value = sys.stderr.getvalue()
 
-# Restore
 sys.stdout = old_stdout
 sys.stderr = old_stderr
 
-# Check no CLI output
 assert not stdout_value, f"Unexpected stdout: {stdout_value}"
 assert not stderr_value, f"Unexpected stderr: {stderr_value}"
-# Version should be a non-empty string
 assert __version__ and isinstance(__version__, str)
 print("SUCCESS")
 """
