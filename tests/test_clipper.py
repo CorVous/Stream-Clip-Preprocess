@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import subprocess  # noqa: S404
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import stream_clip_preprocess.clipper as clipper_module
 from stream_clip_preprocess.clipper import (
     ClipExtractor,
     ClipResult,
@@ -332,7 +332,9 @@ class TestClipExtractor:
             ),
             patch(
                 "stream_clip_preprocess.clipper.subprocess.run",
-                side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1),
+                side_effect=clipper_module.subprocess.TimeoutExpired(
+                    cmd="ffmpeg", timeout=1
+                ),
             ),
         ):
             extractor = ClipExtractor()
