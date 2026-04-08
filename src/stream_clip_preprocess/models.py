@@ -85,6 +85,7 @@ class ClipConfig:
 
     output_dir: Path
     padding: int = 30
+    subprocess_timeout: int = 300
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""
