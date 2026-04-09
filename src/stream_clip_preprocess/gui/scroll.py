@@ -99,6 +99,55 @@ def _is_tk9() -> bool:
         return False
 
 
+def _find_scrollable_candidates(
+    widget: tk.Misc | None,
+    scrollables: list[ctk.CTkScrollableFrame],
+) -> list[ctk.CTkScrollableFrame]:
+    """Return ordered candidate list for scrolling, innermost first.
+
+    Enables cascade: when the innermost frame cannot scroll (fully visible),
+    callers iterate to the next candidate until one can actually scroll.
+
+    **Pass 1** — ``check_if_master_is_canvas(widget)``: if the widget is a
+    direct canvas child of ``scrollables[i]``, return ``scrollables[i:]``.
+
+    **Pass 2** — Tk path-prefix: ``str(widget).startswith(str(sf) + ".")``.
+    Catches widgets nested deeper than a direct canvas child (e.g. the
+    internal ``Text`` widget inside a ``CTkTextbox``).
+
+    :param widget: The Tk widget under the mouse pointer, or ``None``.
+    :param scrollables: Candidate frames ordered **innermost first**.
+    :return: Ordered slice of *scrollables* to try; empty when *widget*
+        is outside every registered frame.
+    """
+    if widget is None:
+        return []
+
+    # Pass 1: direct canvas-child check (handles normal widgets)
+    for i, sf in enumerate(scrollables):
+        try:
+            if sf.check_if_master_is_canvas(widget):
+                return scrollables[i:]
+        except (AttributeError, KeyError, RuntimeError):
+            continue
+
+    # Pass 2: Tk path-prefix check (catches CTkTextbox and other widgets
+    # whose .master chain doesn't reach the canvas directly)
+    try:
+        widget_path = str(widget)
+        for i, sf in enumerate(scrollables):
+            try:
+                if widget_path.startswith(str(sf) + "."):
+                    return scrollables[i:]
+            except Exception:
+                _logger.debug("Error checking path prefix for %s", sf, exc_info=True)
+                continue
+    except Exception:
+        _logger.debug("Error in scrollable ancestor check", exc_info=True)
+
+    return []
+
+
 def _install_macos_native_monitor(
     root: ctk.CTk,
     scrollables: list[ctk.CTkScrollableFrame],
@@ -121,24 +170,16 @@ def _install_macos_native_monitor(
 
     scroll_queue: queue.Queue[float] = queue.Queue()
 
-    def _find_scrollable() -> ctk.CTkScrollableFrame | None:
-        """Find the scrollable frame under the mouse pointer."""
+    def _find_candidates() -> list[ctk.CTkScrollableFrame]:
+        """Return scrollable candidates under the mouse pointer."""
         try:
-            # Get the widget under the mouse via Tk
             x = root.winfo_pointerx()
             y = root.winfo_pointery()
             widget = root.winfo_containing(x, y)
-            if widget is None:
-                return None
-            for sf in scrollables:
-                try:
-                    if sf.check_if_master_is_canvas(widget):
-                        return sf
-                except (AttributeError, KeyError, RuntimeError):
-                    continue
         except Exception:
-            _logger.debug("Error finding scrollable frame", exc_info=True)
-        return None
+            _logger.debug("Error getting widget under cursor", exc_info=True)
+            return []
+        return _find_scrollable_candidates(widget, scrollables)
 
     def _ns_event_handler(ns_event: object) -> object:
         """NSEvent callback — runs on the NSEvent thread.
@@ -158,14 +199,12 @@ def _install_macos_native_monitor(
         try:
             while True:
                 delta_y = scroll_queue.get_nowait()
-                target = _find_scrollable()
-                if target is None:
-                    continue
-                canvas = target._parent_canvas  # noqa: SLF001
-                if canvas.yview() == (0.0, 1.0):
-                    continue
                 units = int(-delta_y / _MAC_PIXEL_DIVISOR) or (-1 if delta_y > 0 else 1)
-                canvas.yview_scroll(units, "units")
+                for sf in _find_candidates():
+                    canvas = sf._parent_canvas  # noqa: SLF001
+                    if canvas.yview() != (0.0, 1.0):
+                        canvas.yview_scroll(units, "units")
+                        break
         except queue.Empty:
             pass
         except Exception:
@@ -223,41 +262,33 @@ def install_mousewheel_fix(
 
     # --- Generic fix (Windows, Linux, macOS Tk 8) ---
 
-    def _find_scrollable(widget: tk.Misc) -> ctk.CTkScrollableFrame | None:
-        for sf in scrollables:
-            try:
-                if sf.check_if_master_is_canvas(widget):
-                    return sf
-            except (AttributeError, KeyError, RuntimeError):
-                continue
-        return None
-
-    def _do_scroll(sf: ctk.CTkScrollableFrame, units: int) -> None:
-        canvas = sf._parent_canvas  # noqa: SLF001
-        if canvas.yview() != (0.0, 1.0):
-            canvas.yview_scroll(units, "units")
-
     if sys.platform == "linux":
 
         def _on_button_4(event: tk.Event[tk.Misc]) -> None:
-            target = _find_scrollable(event.widget)
-            if target is not None:
-                _do_scroll(target, -3)
+            for sf in _find_scrollable_candidates(event.widget, scrollables):
+                canvas = sf._parent_canvas  # noqa: SLF001
+                if canvas.yview() != (0.0, 1.0):
+                    canvas.yview_scroll(-3, "units")
+                    break
 
         def _on_button_5(event: tk.Event[tk.Misc]) -> None:
-            target = _find_scrollable(event.widget)
-            if target is not None:
-                _do_scroll(target, 3)
+            for sf in _find_scrollable_candidates(event.widget, scrollables):
+                canvas = sf._parent_canvas  # noqa: SLF001
+                if canvas.yview() != (0.0, 1.0):
+                    canvas.yview_scroll(3, "units")
+                    break
 
         root.bind_all("<Button-4>", _on_button_4)
         root.bind_all("<Button-5>", _on_button_5)
 
     def _on_mousewheel(event: tk.Event[tk.Misc]) -> None:
-        target = _find_scrollable(event.widget)
-        if target is None:
-            return
         units = normalize_wheel_delta(event.delta)
-        if units != 0:
-            _do_scroll(target, units)
+        if units == 0:
+            return
+        for sf in _find_scrollable_candidates(event.widget, scrollables):
+            canvas = sf._parent_canvas  # noqa: SLF001
+            if canvas.yview() != (0.0, 1.0):
+                canvas.yview_scroll(units, "units")
+                break
 
     root.bind_all("<MouseWheel>", _on_mousewheel)

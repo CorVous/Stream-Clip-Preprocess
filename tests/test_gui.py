@@ -9,7 +9,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stream_clip_preprocess.gui.scroll import normalize_wheel_delta
+from stream_clip_preprocess.gui.scroll import (
+    _find_scrollable_candidates,  # noqa: PLC2701
+    normalize_wheel_delta,
+)
 from stream_clip_preprocess.gui.state import (
     AppState,
     ThrottledCallback,
@@ -247,6 +250,125 @@ class TestNormalizeWheelDelta:
         up = normalize_wheel_delta(120, platform="darwin")
         down = normalize_wheel_delta(-120, platform="darwin")
         assert up == -down
+
+
+# ---------------------------------------------------------------------------
+# _find_scrollable_candidates
+# ---------------------------------------------------------------------------
+
+
+class TestFindScrollableCandidates:
+    """Tests for scroll-cascade candidate resolution — pure Python, no Tk."""
+
+    @staticmethod
+    def _make_sf(
+        path: str,
+        canvas_widgets: list[object] | None = None,
+    ) -> MagicMock:
+        """Build a minimal ``CTkScrollableFrame`` mock.
+
+        :param path: Tk path string returned by ``str(sf)``.
+        :param canvas_widgets: Widgets for which ``check_if_master_is_canvas``
+            returns ``True``.
+        """
+        sf = MagicMock()
+        sf.__str__ = MagicMock(return_value=path)
+        direct: set[object] = set(canvas_widgets or [])
+        sf.check_if_master_is_canvas = lambda w: w in direct
+        return sf
+
+    @staticmethod
+    def _make_widget(path: str) -> MagicMock:
+        """Build a minimal widget mock with a Tk-style path string."""
+        w = MagicMock()
+        w.__str__ = MagicMock(return_value=path)
+        return w
+
+    # -- trivial / empty --
+
+    def test_none_widget_returns_empty(self) -> None:
+        """None widget always yields an empty candidate list."""
+        inner = self._make_sf(".!app.!moments")
+        outer = self._make_sf(".!app.!scroll")
+        assert _find_scrollable_candidates(None, [inner, outer]) == []
+
+    def test_empty_scrollables_returns_empty(self) -> None:
+        """No scrollables registered always yields empty list."""
+        w = self._make_widget(".!app.!scroll.somewidget")
+        assert _find_scrollable_candidates(w, []) == []
+
+    # -- Pass 1: check_if_master_is_canvas --
+
+    def test_widget_in_inner_canvas_returns_inner_and_outer(self) -> None:
+        """Widget inside inner canvas returns [inner, outer] for cascade."""
+        w = self._make_widget(".!app.!moments.somewidget")
+        inner = self._make_sf(".!app.!moments", canvas_widgets=[w])
+        outer = self._make_sf(".!app.!scroll")
+        result = _find_scrollable_candidates(w, [inner, outer])
+        assert result == [inner, outer]
+
+    def test_widget_in_outer_canvas_only_returns_outer(self) -> None:
+        """Widget inside outer canvas but not inner returns [outer] only."""
+        w = self._make_widget(".!app.!scroll.somewidget")
+        inner = self._make_sf(".!app.!moments")
+        outer = self._make_sf(".!app.!scroll", canvas_widgets=[w])
+        result = _find_scrollable_candidates(w, [inner, outer])
+        assert result == [outer]
+
+    def test_widget_outside_all_frames_returns_empty(self) -> None:
+        """Widget in no scrollable canvas and no path prefix returns empty."""
+        w = self._make_widget(".!app.!toolbar.button")
+        inner = self._make_sf(".!app.!moments")
+        outer = self._make_sf(".!app.!scroll")
+        assert _find_scrollable_candidates(w, [inner, outer]) == []
+
+    # -- Pass 2: Tk path-prefix fallback --
+
+    def test_nested_widget_via_path_prefix_outer(self) -> None:
+        """Widget nested deep under outer frame matched via path prefix.
+
+        Simulates a ``CTkTextbox`` whose ``.master`` chain doesn't reach the
+        canvas directly, but whose Tk path starts with ``str(sf) + '.'``.
+        """
+        w = self._make_widget(".!app.!scroll.!ctktextbox.!text")
+        inner = self._make_sf(".!app.!moments")
+        outer = self._make_sf(".!app.!scroll")
+        result = _find_scrollable_candidates(w, [inner, outer])
+        assert result == [outer]
+
+    def test_nested_widget_via_path_prefix_inner_cascades(self) -> None:
+        """Widget deep inside inner frame's path returns [inner, outer]."""
+        w = self._make_widget(".!app.!moments.!ctktextbox.!text")
+        inner = self._make_sf(".!app.!moments")
+        outer = self._make_sf(".!app.!scroll")
+        result = _find_scrollable_candidates(w, [inner, outer])
+        assert result == [inner, outer]
+
+    # -- priority / error handling --
+
+    def test_pass1_takes_priority_over_pass2(self) -> None:
+        """Pass 1 (canvas child) wins even when path prefix would differ.
+
+        Widget path starts with inner's prefix, but pass-1 says it belongs
+        to outer's canvas — pass 1 result should be used.
+        """
+        w = self._make_widget(".!app.!moments.but_in_outer_canvas")
+        inner = self._make_sf(".!app.!moments")
+        outer = self._make_sf(".!app.!scroll", canvas_widgets=[w])
+        result = _find_scrollable_candidates(w, [inner, outer])
+        assert result == [outer]
+
+    def test_check_if_master_raises_is_skipped(self) -> None:
+        """A scrollable whose check_if_master_is_canvas raises is skipped."""
+        w = self._make_widget(".!app.!scroll.somewidget")
+        bad_sf = MagicMock()
+        bad_sf.__str__ = MagicMock(return_value=".!app.!bad")
+        bad_sf.check_if_master_is_canvas = MagicMock(
+            side_effect=RuntimeError("dead"),
+        )
+        outer = self._make_sf(".!app.!scroll", canvas_widgets=[w])
+        result = _find_scrollable_candidates(w, [bad_sf, outer])
+        assert result == [outer]
 
 
 # ---------------------------------------------------------------------------
