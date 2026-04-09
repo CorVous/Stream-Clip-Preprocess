@@ -12,6 +12,15 @@ from typing import TYPE_CHECKING, cast
 
 import customtkinter as ctk  # type: ignore[import-untyped]
 
+from stream_clip_preprocess.cache import (
+    cache_summary,
+    clear_cache,
+    has_cached_video,
+    load_cached_transcript,
+    save_transcript_to_cache,
+    store_video_in_cache,
+    video_cache_path,
+)
 from stream_clip_preprocess.clipper import ClipExtractor
 from stream_clip_preprocess.downloader import DownloadError, VideoDownloader
 from stream_clip_preprocess.gui import themes
@@ -88,6 +97,8 @@ class MainApp(ctk.CTk):
         self._state = AppState.IDLE
         self._video_info: VideoInfo | None = None
         self._transcript_segments: list[TranscriptSegment] | None = None
+        self._transcript_from_cache: bool = False
+        self._video_downloading: bool = False
         self._moments: list[Moment] = []
         self._moment_rows: list[MomentRow] = []
 
@@ -97,6 +108,7 @@ class MainApp(ctk.CTk):
         self._build_ui()
         self._load_persisted_settings()
         self._settings_initialized = True
+        self._update_cache_label()
 
     def _build_ui(self) -> None:
         """Build all UI sections."""
@@ -188,6 +200,41 @@ class MainApp(ctk.CTk):
         )
         self._or_model_entry.pack(side="left", fill="x", expand=True, padx=8)
 
+        # --- Output folder row ---
+        output_row = ctk.CTkFrame(frame, fg_color="transparent")
+        output_row.pack(fill="x", padx=themes.PAD_X, pady=(0, themes.PAD_Y))
+
+        ctk.CTkLabel(output_row, text="Output folder:").pack(side="left")
+        self._output_dir_var = ctk.StringVar()
+        self._output_dir_entry = ctk.CTkEntry(
+            output_row,
+            textvariable=self._output_dir_var,
+        )
+        self._output_dir_entry.pack(side="left", fill="x", expand=True, padx=8)
+
+        self._browse_btn = ctk.CTkButton(
+            output_row,
+            text="Browse...",
+            width=80,
+            command=self._on_browse,
+        )
+        self._browse_btn.pack(side="left")
+
+        # --- Cache info row ---
+        cache_row = ctk.CTkFrame(frame, fg_color="transparent")
+        cache_row.pack(fill="x", padx=themes.PAD_X, pady=(0, themes.PAD_Y))
+
+        self._cache_label = ctk.CTkLabel(cache_row, text="Cache: —")
+        self._cache_label.pack(side="left")
+
+        self._clear_cache_btn = ctk.CTkButton(
+            cache_row,
+            text="Clear Cache",
+            width=110,
+            command=self._on_clear_cache,
+        )
+        self._clear_cache_btn.pack(side="left", padx=8)
+
         # Start with correct visibility
         self._on_backend_changed("Local")
 
@@ -247,6 +294,34 @@ class MainApp(ctk.CTk):
         if path:
             self._model_path_var.set(path)
             self._save_current_settings()
+
+    # ------------------------------------------------------------------
+    # Cache helpers
+    # ------------------------------------------------------------------
+
+    def _cache_base(self) -> Path | None:
+        """Return the cache directory for the current output folder, or None.
+
+        :return: ``{output_dir}/cache`` if an output folder is set, else ``None``.
+        """
+        d = self._output_dir_var.get().strip()
+        return Path(d) / "cache" if d else None
+
+    def _update_cache_label(self) -> None:
+        """Refresh the cache size label in the Settings section."""
+        summary = cache_summary(cache_base=self._cache_base())
+        total_mb = summary["total_bytes"] / (1024 * 1024)
+        if total_mb >= 1024:
+            size_str = f"{total_mb / 1024:.1f} GB"
+        else:
+            size_str = f"{total_mb:.0f} MB"
+        n = summary["video_count"] + summary["transcript_count"]
+        self._cache_label.configure(text=f"Cache: {n} file(s), {size_str}")
+
+    def _on_clear_cache(self) -> None:
+        """Handle Clear Cache button click."""
+        clear_cache(cache_base=self._cache_base())
+        self._update_cache_label()
 
     def _build_step1_input(self) -> None:
         """Build Step 1: URL input."""
@@ -377,16 +452,6 @@ class MainApp(ctk.CTk):
         )
         self._padding_entry.pack(side="left", padx=8)
 
-        ctk.CTkLabel(row, text="Output folder:").pack(side="left", padx=(16, 0))
-        self._output_dir_var = ctk.StringVar()
-        self._output_dir_entry = ctk.CTkEntry(row, textvariable=self._output_dir_var)
-        self._output_dir_entry.pack(side="left", fill="x", expand=True, padx=8)
-
-        self._browse_btn = ctk.CTkButton(
-            row, text="Browse...", width=80, command=self._on_browse
-        )
-        self._browse_btn.pack(side="left")
-
         self._clip_btn = ctk.CTkButton(
             self._step4_frame,
             text="Create Clips",
@@ -460,6 +525,11 @@ class MainApp(ctk.CTk):
         self._moments_scroll.configure(fg_color=step3_fg)
         self._step4_frame.configure(fg_color=self._section_fg_color(step3_state))
 
+        # Keep the clip button greyed out while the video download is in
+        # progress, even if the LLM analysis has already completed.
+        if step3_state == "normal" and self._video_downloading:
+            self._clip_btn.configure(state="disabled")
+
     # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
@@ -481,19 +551,30 @@ class MainApp(ctk.CTk):
         )
         self._download_progress.set(0)
 
-        def _do_fetch() -> tuple[VideoInfo, list[TranscriptSegment]]:
+        def _do_fetch() -> tuple[VideoInfo, list[TranscriptSegment], bool]:
             downloader = VideoDownloader()
             info = downloader.get_info(url)
 
             video_id = extract_video_id(url)
+            cb = self._cache_base()
+
+            # Check transcript cache first
+            cached_segments = load_cached_transcript(video_id, cache_base=cb)
+            if cached_segments is not None:
+                return info, cached_segments, True
+
             fetcher = TranscriptFetcher()
             segments = fetcher.fetch(video_id)
-            return info, segments
+            save_transcript_to_cache(video_id, segments, cache_base=cb)
+            return info, segments, False
 
         def _on_done(result: object) -> None:
-            info, segments = cast("tuple[VideoInfo, list[TranscriptSegment]]", result)
+            info, segments, from_cache = cast(
+                "tuple[VideoInfo, list[TranscriptSegment], bool]", result
+            )
             self._video_info = info
             self._transcript_segments = segments
+            self._transcript_from_cache = from_cache
             self._state = AppState.ANALYZING
             self.after(0, self._after_fetch_success)
 
@@ -525,10 +606,12 @@ class MainApp(ctk.CTk):
         """
         title = self._video_info.title if self._video_info else "Unknown"
         seg_count = len(self._transcript_segments or [])
-        self._download_status.configure(
-            text=f"{title} ({seg_count} segments) \u2014 downloading video\u2026",
-            text_color="white",
+        transcript_note = " (transcript cached)" if self._transcript_from_cache else ""
+        status = (
+            f"{title} ({seg_count} segments{transcript_note})"
+            f" \u2014 downloading video\u2026"
         )
+        self._download_status.configure(text=status, text_color="white")
         self._download_progress.set(0)
         self._fetch_btn.configure(state="normal")
 
@@ -577,9 +660,27 @@ class MainApp(ctk.CTk):
     # ------------------------------------------------------------------
 
     def _start_background_download(self) -> None:
-        """Start downloading the video in a background thread."""
+        """Start downloading the video in a background thread.
+
+        If the video is already cached, sets the local path directly and
+        skips the network download entirely.
+        """
         url = self._url_var.get().strip()
         game = self._video_info.game if self._video_info else None
+
+        # Check video cache before starting the download
+        video_id = extract_video_id(url)
+        cb = self._cache_base()
+        if cb is not None and has_cached_video(video_id, cache_base=cb):
+            cached_path = video_cache_path(video_id, cb)
+            if self._video_info:
+                self._video_info.local_path = cached_path
+            self.after(0, lambda: self._after_download_success(from_cache=True))
+            return
+
+        # Mark downloading so the clip button stays greyed out until done.
+        self._video_downloading = True
+        self._update_section_states()
 
         def _on_dl_progress_raw(prog: DownloadProgress) -> None:
             self.after(
@@ -600,14 +701,22 @@ class MainApp(ctk.CTk):
 
         def _on_done(result: object) -> None:
             dl_info = cast("VideoInfo", result)
-            if self._video_info:
-                self._video_info.local_path = dl_info.local_path
+            if self._video_info and dl_info.local_path is not None:
+                # Move video into the cache immediately so it survives
+                # beyond this session and is available for re-use.
+                new_path = store_video_in_cache(
+                    dl_info.video_id, dl_info.local_path, cache_base=cb
+                )
+                self._video_info.local_path = (
+                    new_path if new_path is not None else dl_info.local_path
+                )
                 # Preserve game from initial metadata if download lost it
                 if not self._video_info.game and dl_info.game:
                     self._video_info.game = dl_info.game
                 elif not self._video_info.game and game:
                     self._video_info.game = game
-            self.after(0, self._after_download_success)
+            self.after(0, lambda: self._after_download_success(from_cache=False))
+            self.after(0, self._update_cache_label)
 
         def _on_error(exc: Exception) -> None:
             self.after(0, lambda: self._after_download_error(exc))
@@ -616,23 +725,37 @@ class MainApp(ctk.CTk):
             _do_download, on_done=_on_done, on_error=_on_error
         )
 
-    def _after_download_success(self) -> None:
-        """Update UI after video download completes (called on main thread)."""
+    def _after_download_success(self, *, from_cache: bool = False) -> None:
+        """Update UI after video download completes (called on main thread).
+
+        :param from_cache: Whether the video was served from cache (no download).
+        """
+        self._video_downloading = False
         self._download_progress.set(1.0)
         title = self._video_info.title if self._video_info else "Unknown"
         seg_count = len(self._transcript_segments or [])
+        source = "cached" if from_cache else "downloaded"
+        transcript_note = " (transcript cached)" if self._transcript_from_cache else ""
+        status = (
+            f"Ready: {title} ({seg_count} segments{transcript_note})"
+            f" \u2014 video {source}"
+        )
         self._download_status.configure(
-            text=f"Ready: {title} ({seg_count} segments) \u2014 video downloaded",
+            text=status,
             text_color=themes.COLOR_SUCCESS,
         )
+        # Re-evaluate section states so the clip button un-greys if LLM is done.
+        self._update_section_states()
 
     def _after_download_error(self, exc: Exception) -> None:
         """Update UI after video download fails (called on main thread)."""
+        self._video_downloading = False
         self._download_progress.set(0)
         self._download_status.configure(
             text=f"Download failed: {exc}",
             text_color=themes.COLOR_ERROR,
         )
+        self._update_section_states()
 
     def _on_analyze(self) -> None:
         """Handle Find Moments button click."""
@@ -908,10 +1031,33 @@ class MainApp(ctk.CTk):
                 on_clip_done=_on_clip_done,
             )
 
-            # Delete the downloaded source video
-            with contextlib.suppress(OSError):
-                video_path.unlink()
-                _logger.info("Deleted source video: %s", video_path)
+            # Ensure the source video is in the cache.  If it was already
+            # moved there right after download this is a fast no-op.  If it
+            # is still in a temp directory (output_dir was unset at download
+            # time), move it now and update the stored path so subsequent
+            # clip passes find the file correctly.
+            clip_cache = output_base / "cache"
+            try:
+                new_path = store_video_in_cache(
+                    video_id, video_path, cache_base=clip_cache
+                )
+            except OSError:
+                new_path = None
+                _logger.warning("Could not cache source video: %s", video_path)
+
+            if new_path is not None:
+                _logger.info("Source video in cache: %s", new_path)
+                cached_path = new_path
+
+                def _sync_after_clip() -> None:
+                    if self._video_info:
+                        self._video_info.local_path = cached_path
+                    self._update_cache_label()
+
+                self.after(0, _sync_after_clip)
+            else:
+                with contextlib.suppress(OSError):
+                    video_path.unlink()
 
             return results
 
