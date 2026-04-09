@@ -6,7 +6,6 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
@@ -19,6 +18,7 @@ from stream_clip_preprocess.transcript import extract_video_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
@@ -101,12 +101,11 @@ class VideoDownloader:
         :raises DownloadError: If metadata fetch fails
         """
         clean_url = _clean_youtube_url(url)
-        ffmpeg_dir = str(Path(get_ffmpeg_exe()).parent)
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "ffmpeg_location": ffmpeg_dir,
+            "ffmpeg_location": get_ffmpeg_exe(),
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -186,7 +185,6 @@ class VideoDownloader:
             )
 
         clean_url = _clean_youtube_url(url)
-        ffmpeg_dir = str(Path(get_ffmpeg_exe()).parent)
         ydl_opts: dict = {  # type: ignore[type-arg]
             "quiet": True,
             "no_warnings": True,
@@ -194,7 +192,7 @@ class VideoDownloader:
             "outtmpl": output_template,
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "merge_output_format": "mp4",
-            "ffmpeg_location": ffmpeg_dir,
+            "ffmpeg_location": get_ffmpeg_exe(),
             "progress_hooks": [_hook],
         }
 
