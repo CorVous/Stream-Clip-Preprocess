@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from stream_clip_preprocess.downloader import (
     DownloadError,
     DownloadProgress,
     VideoDownloader,
+    extract_game_from_youtube,
 )
 from stream_clip_preprocess.models import VideoInfo
 
@@ -67,7 +70,13 @@ class TestVideoDownloader:
             "duration": 212,
             "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         }
-        with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+        with (
+            patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl,
+            patch(
+                "stream_clip_preprocess.downloader.extract_game_from_youtube",
+                return_value=None,
+            ),
+        ):
             mock_instance = MagicMock()
             mock_instance.__enter__ = MagicMock(return_value=mock_instance)
             mock_instance.__exit__ = MagicMock(return_value=False)
@@ -118,9 +127,15 @@ class TestVideoDownloader:
             "duration": 212,
             "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         }
-        with patch(
-            "stream_clip_preprocess.downloader.yt_dlp.YoutubeDL",
-        ) as mock_ydl:
+        with (
+            patch(
+                "stream_clip_preprocess.downloader.yt_dlp.YoutubeDL",
+            ) as mock_ydl,
+            patch(
+                "stream_clip_preprocess.downloader.extract_game_from_youtube",
+                return_value=None,
+            ),
+        ):
             mock_instance = MagicMock()
             mock_instance.__enter__ = MagicMock(
                 return_value=mock_instance,
@@ -407,3 +422,135 @@ class TestVideoDownloader:
         downloader = VideoDownloader()
         result = downloader.sanitize_filename("a" * 300)
         assert len(result) == 300
+
+
+# ---------------------------------------------------------------------------
+# extract_game_from_youtube
+# ---------------------------------------------------------------------------
+
+
+def _fake_youtube_page(game: str | None = None, year: str = "") -> str:
+    """Build minimal HTML mimicking YouTube's ytInitialData with game info."""
+    if game is None:
+        yt_data = {"engagementPanels": []}
+    else:
+        yt_data = {
+            "engagementPanels": [
+                {
+                    "engagementPanelSectionListRenderer": {
+                        "content": {
+                            "structuredDescriptionContentRenderer": {
+                                "items": [
+                                    {
+                                        "videoAttributesSectionViewModel": {
+                                            "headerTitle": "Games",
+                                            "videoAttributeViewModels": [
+                                                {
+                                                    "videoAttributeViewModel": {
+                                                        "title": game,
+                                                        "subtitle": year,
+                                                    }
+                                                }
+                                            ],
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    return f"<script>var ytInitialData = {json.dumps(yt_data)};</script>"
+
+
+class TestExtractGameFromYoutube:
+    """Tests for extract_game_from_youtube."""
+
+    def test_extracts_game_name(self) -> None:
+        """Game name is parsed from the videoAttributesSectionViewModel."""
+        html = _fake_youtube_page(game="Minecraft", year="2009")
+        with patch("stream_clip_preprocess.downloader.httpx.get") as mock_get:
+            mock_get.return_value = MagicMock(text=html)
+            result = extract_game_from_youtube("https://www.youtube.com/watch?v=x")
+        assert result == "Minecraft"
+
+    def test_returns_none_when_no_game_section(self) -> None:
+        """Returns None for videos without a Games section."""
+        html = _fake_youtube_page(game=None)
+        with patch("stream_clip_preprocess.downloader.httpx.get") as mock_get:
+            mock_get.return_value = MagicMock(text=html)
+            result = extract_game_from_youtube("https://www.youtube.com/watch?v=x")
+        assert result is None
+
+    def test_returns_none_when_no_yt_initial_data(self) -> None:
+        """Returns None when the page has no ytInitialData."""
+        with patch("stream_clip_preprocess.downloader.httpx.get") as mock_get:
+            mock_get.return_value = MagicMock(text="<html></html>")
+            result = extract_game_from_youtube("https://www.youtube.com/watch?v=x")
+        assert result is None
+
+    def test_returns_none_on_network_error(self) -> None:
+        """Returns None on any HTTP failure."""
+        with patch("stream_clip_preprocess.downloader.httpx.get") as mock_get:
+            mock_get.side_effect = httpx.ConnectError("fail")
+            result = extract_game_from_youtube("https://www.youtube.com/watch?v=x")
+        assert result is None
+
+
+class TestGetInfoYouTubeGameFallback:
+    """Tests for get_info falling back to YouTube page scraping for game."""
+
+    def test_falls_back_to_youtube_page_when_ytdlp_has_no_game(self) -> None:
+        """get_info scrapes game from YouTube page when yt-dlp returns None."""
+        fake_info = {
+            "id": "test123",
+            "title": "Playing Minecraft!",
+            "duration": 7200,
+            "webpage_url": "https://www.youtube.com/watch?v=test123",
+        }
+        with (
+            patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl,
+            patch(
+                "stream_clip_preprocess.downloader.extract_game_from_youtube"
+            ) as mock_extract,
+        ):
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+            mock_extract.return_value = "Minecraft"
+
+            info = VideoDownloader().get_info("https://www.youtube.com/watch?v=test123")
+
+        assert info.game == "Minecraft"
+        mock_extract.assert_called_once_with("https://www.youtube.com/watch?v=test123")
+
+    def test_skips_fallback_when_ytdlp_has_game(self) -> None:
+        """get_info does NOT scrape the page when yt-dlp already found a game."""
+        fake_info = {
+            "id": "twitch_vod",
+            "title": "Twitch stream",
+            "duration": 3600,
+            "webpage_url": "https://www.youtube.com/watch?v=twitch_vod",
+            "game": "Valorant",
+        }
+        with (
+            patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl,
+            patch(
+                "stream_clip_preprocess.downloader.extract_game_from_youtube"
+            ) as mock_extract,
+        ):
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+
+            info = VideoDownloader().get_info(
+                "https://www.youtube.com/watch?v=twitch_vod"
+            )
+
+        assert info.game == "Valorant"
+        mock_extract.assert_not_called()
