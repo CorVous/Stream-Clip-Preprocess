@@ -7,8 +7,7 @@ import subprocess  # noqa: S404
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import imageio_ffmpeg  # type: ignore[import-untyped]
-
+from stream_clip_preprocess.ffmpeg import get_ffmpeg_exe
 from stream_clip_preprocess.sanitize import sanitize_filename
 
 if TYPE_CHECKING:
@@ -87,7 +86,7 @@ class ClipExtractor:
         :param video_duration: Total video duration (for clamping)
         :return: ClipResult indicating success or failure
         """
-        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        ffmpeg = get_ffmpeg_exe()
         start = self.compute_padded_start(moment, config, video_duration)
         end = self.compute_padded_end(moment, config, video_duration)
 

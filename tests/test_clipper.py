@@ -152,7 +152,7 @@ class TestClipExtractor:
 
         with (
             patch(
-                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                "stream_clip_preprocess.clipper.get_ffmpeg_exe",
                 return_value=fake_ffmpeg,
             ),
             patch("stream_clip_preprocess.clipper.subprocess.run") as mock_run,
@@ -182,7 +182,7 @@ class TestClipExtractor:
 
         with (
             patch(
-                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                "stream_clip_preprocess.clipper.get_ffmpeg_exe",
                 return_value=fake_ffmpeg,
             ),
             patch("stream_clip_preprocess.clipper.subprocess.run") as mock_run,
@@ -236,7 +236,7 @@ class TestClipExtractor:
 
         with (
             patch(
-                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                "stream_clip_preprocess.clipper.get_ffmpeg_exe",
                 return_value="/nonexistent/ffmpeg",
             ),
             patch(
@@ -267,7 +267,7 @@ class TestClipExtractor:
 
         with (
             patch(
-                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                "stream_clip_preprocess.clipper.get_ffmpeg_exe",
                 return_value=fake_ffmpeg,
             ),
             patch("stream_clip_preprocess.clipper.subprocess.run") as mock_run,
@@ -301,7 +301,7 @@ class TestClipExtractor:
 
         with (
             patch(
-                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                "stream_clip_preprocess.clipper.get_ffmpeg_exe",
                 return_value=fake_ffmpeg,
             ),
             patch("stream_clip_preprocess.clipper.subprocess.run") as mock_run,
@@ -327,7 +327,7 @@ class TestClipExtractor:
 
         with (
             patch(
-                "stream_clip_preprocess.clipper.imageio_ffmpeg.get_ffmpeg_exe",
+                "stream_clip_preprocess.clipper.get_ffmpeg_exe",
                 return_value="/usr/bin/ffmpeg",
             ),
             patch(
