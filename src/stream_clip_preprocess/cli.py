@@ -103,10 +103,15 @@ def main() -> int:
     parser = create_parser()
     args = parser.parse_args()
 
-    # If no command specified, show help
+    # If no command specified: default to GUI when running as a frozen .app
+    # bundle (double-clicked), otherwise show help in the terminal.
     if args.command is None:
-        parser.print_help()
-        return 0
+        if getattr(sys, "frozen", False):
+            args.command = "gui"
+            args.func = gui_cmd.run
+        else:
+            parser.print_help()
+            return 0
 
     # Setup logging
     setup_logging(verbose=args.verbose)
