@@ -94,6 +94,9 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           brew install create-dmg || true
+          # Try create-dmg for a styled DMG; fall back to plain hdiutil if
+          # AppleScript/Finder automation is not permitted (common in CI and
+          # sandboxed terminals).
           create-dmg \
             --volname "Stream Clip Preprocess" \
             --window-pos 200 120 \
@@ -101,7 +104,11 @@ jobs:
             --icon-size 100 \
             --app-drop-link 425 120 \
             "dist/Stream-Clip-Preprocess.dmg" \
-            "dist/Stream Clip Preprocess.app" || true
+            "dist/Stream Clip Preprocess.app" \
+          || hdiutil create -volname "Stream Clip Preprocess" \
+               -srcfolder "dist/Stream Clip Preprocess.app" \
+               -ov -format UDZO \
+               "dist/Stream-Clip-Preprocess.dmg"
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v7

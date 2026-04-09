@@ -14,12 +14,28 @@ import yt_dlp  # type: ignore[import-untyped]
 from stream_clip_preprocess.ffmpeg import get_ffmpeg_exe
 from stream_clip_preprocess.models import VideoInfo
 from stream_clip_preprocess.sanitize import sanitize_filename
+from stream_clip_preprocess.transcript import extract_video_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
 _logger = logging.getLogger(__name__)
+
+
+def _clean_youtube_url(url: str) -> str:
+    """Strip extra query parameters from a YouTube URL.
+
+    Reconstructs the URL with only the ``v=`` parameter so that yt-dlp
+    does not accidentally process playlists or other resources embedded
+    in the query string.  Returns *url* unchanged when the video ID
+    cannot be extracted (e.g. non-YouTube URLs).
+    """
+    try:
+        video_id = extract_video_id(url)
+    except ValueError:
+        return url
+    return f"https://www.youtube.com/watch?v={video_id}"
 
 
 def extract_game_from_youtube(url: str) -> str | None:
@@ -84,10 +100,16 @@ class VideoDownloader:
         :return: VideoInfo with metadata
         :raises DownloadError: If metadata fetch fails
         """
-        ydl_opts = {"quiet": True, "no_warnings": True}
+        clean_url = _clean_youtube_url(url)
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "ffmpeg_location": get_ffmpeg_exe(),
+        }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                info = ydl.extract_info(clean_url, download=False)
         except Exception as exc:
             msg = f"Failed to fetch video info for {url!r}: {exc}"
             raise DownloadError(msg) from exc
@@ -162,9 +184,11 @@ class VideoDownloader:
                 )
             )
 
+        clean_url = _clean_youtube_url(url)
         ydl_opts: dict = {  # type: ignore[type-arg]
             "quiet": True,
             "no_warnings": True,
+            "noplaylist": True,
             "outtmpl": output_template,
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "merge_output_format": "mp4",
@@ -174,7 +198,7 @@ class VideoDownloader:
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+                info = ydl.extract_info(clean_url, download=True)
         except Exception as exc:
             msg = f"Failed to download video {url!r}: {exc}"
             raise DownloadError(msg) from exc

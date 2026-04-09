@@ -216,6 +216,40 @@ class TestVideoDownloader:
             with pytest.raises(DownloadError):
                 downloader.get_info("https://www.youtube.com/watch?v=invalid")
 
+    def test_download_passes_ffmpeg_location(self, tmp_path: Path) -> None:
+        """Test that download passes ffmpeg_location to yt-dlp options."""
+        fake_info = {
+            "id": "abc123",
+            "title": "Test Video",
+            "duration": 120,
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+        }
+        with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+
+            captured_opts: list[dict] = []  # type: ignore[type-arg]
+
+            def capture_opts(opts: dict) -> MagicMock:  # type: ignore[type-arg]
+                captured_opts.append(opts)
+                return mock_instance
+
+            mock_ydl.side_effect = capture_opts
+
+            downloader = VideoDownloader()
+            downloader.download(
+                "https://www.youtube.com/watch?v=abc123",
+                output_dir=tmp_path,
+            )
+
+        assert captured_opts, "YoutubeDL was not called"
+        assert "ffmpeg_location" in captured_opts[0], (
+            "yt-dlp options must include ffmpeg_location"
+        )
+
     def test_download_calls_yt_dlp(self, tmp_path: Path) -> None:
         """Test that download invokes yt-dlp with correct options."""
         fake_info = {
@@ -606,3 +640,138 @@ class TestGetInfoYouTubeGameFallback:
 
         assert info.game == "Valorant"
         mock_extract.assert_not_called()
+
+
+class TestURLCleaning:
+    """Tests that URLs with extra parameters are cleaned before passing to yt-dlp."""
+
+    def test_get_info_strips_extra_params(self) -> None:
+        """get_info strips playlist and other params, passing only ?v=ID to yt-dlp."""
+        fake_info = {
+            "id": "dQw4w9WgXcQ",
+            "title": "Test",
+            "duration": 100,
+            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "game": "SomeGame",
+        }
+        with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+
+            downloader = VideoDownloader()
+            downloader.get_info(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxxx&index=2"
+            )
+
+        mock_instance.extract_info.assert_called_once_with(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ", download=False
+        )
+
+    def test_download_strips_extra_params(self, tmp_path: Path) -> None:
+        """Download strips playlist and other params, passing only ?v=ID to yt-dlp."""
+        fake_info = {
+            "id": "dQw4w9WgXcQ",
+            "title": "Test",
+            "duration": 100,
+            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        }
+        with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+
+            downloader = VideoDownloader()
+            downloader.download(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxxx&index=2&t=42s",
+                output_dir=tmp_path,
+            )
+
+        mock_instance.extract_info.assert_called_once_with(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ", download=True
+        )
+
+    def test_get_info_sets_noplaylist(self) -> None:
+        """get_info passes noplaylist=True to yt-dlp options."""
+        fake_info = {
+            "id": "dQw4w9WgXcQ",
+            "title": "Test",
+            "duration": 100,
+            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "game": "SomeGame",
+        }
+        with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+
+            captured_opts: list[dict] = []  # type: ignore[type-arg]
+
+            def capture_opts(opts: dict) -> MagicMock:  # type: ignore[type-arg]
+                captured_opts.append(opts)
+                return mock_instance
+
+            mock_ydl.side_effect = capture_opts
+
+            downloader = VideoDownloader()
+            downloader.get_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+        assert captured_opts[0]["noplaylist"] is True
+
+    def test_download_sets_noplaylist(self, tmp_path: Path) -> None:
+        """Download passes noplaylist=True to yt-dlp options."""
+        fake_info = {
+            "id": "dQw4w9WgXcQ",
+            "title": "Test",
+            "duration": 100,
+            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        }
+        with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+
+            captured_opts: list[dict] = []  # type: ignore[type-arg]
+
+            def capture_opts(opts: dict) -> MagicMock:  # type: ignore[type-arg]
+                captured_opts.append(opts)
+                return mock_instance
+
+            mock_ydl.side_effect = capture_opts
+
+            downloader = VideoDownloader()
+            downloader.download(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                output_dir=tmp_path,
+            )
+
+        assert captured_opts[0]["noplaylist"] is True
+
+    def test_get_info_handles_short_url_with_params(self) -> None:
+        """get_info cleans short youtu.be URLs with extra parameters."""
+        fake_info = {
+            "id": "dQw4w9WgXcQ",
+            "title": "Test",
+            "duration": 100,
+            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "game": "SomeGame",
+        }
+        with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+
+            downloader = VideoDownloader()
+            downloader.get_info("https://youtu.be/dQw4w9WgXcQ?si=abc123&t=42")
+
+        mock_instance.extract_info.assert_called_once_with(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ", download=False
+        )
