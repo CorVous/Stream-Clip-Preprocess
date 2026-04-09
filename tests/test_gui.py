@@ -580,3 +580,83 @@ class TestSyncGameField:
         app, game_var = app_for_game_sync
         app.sync_game_field()
         game_var.set.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# sync_stream_type_field — stream type field synchronisation
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def app_for_stream_type_sync() -> tuple[MainApp, MagicMock]:
+    """Return a bare MainApp and a direct reference to its stream-type mock.
+
+    Uses object.__new__ to bypass __init__ (no tkinter needed) and vars() to
+    wire up only the attributes that sync_stream_type_field touches.
+    """
+    from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+    app: MainApp = object.__new__(MainApp)
+    stream_type_var: MagicMock = MagicMock()
+    vars(app).update({
+        "_video_info": None,
+        "_stream_type_var": stream_type_var,
+    })
+    return app, stream_type_var
+
+
+class TestSyncStreamTypeField:
+    """Tests for MainApp.sync_stream_type_field."""
+
+    def test_sets_field_from_first_category(
+        self, app_for_stream_type_sync: tuple[MainApp, MagicMock]
+    ) -> None:
+        """Stream type is set to the first category from metadata."""
+        app, stream_type_var = app_for_stream_type_sync
+        vars(app)["_video_info"] = VideoInfo(
+            url="u",
+            video_id="v",
+            title="T",
+            duration=120.0,
+            categories=["People & Blogs"],
+        )
+        app.sync_stream_type_field()
+        stream_type_var.set.assert_called_once_with("People & Blogs")
+
+    def test_defaults_to_gaming_when_no_categories(
+        self, app_for_stream_type_sync: tuple[MainApp, MagicMock]
+    ) -> None:
+        """Stream type defaults to Gaming when the video has no categories."""
+        app, stream_type_var = app_for_stream_type_sync
+        vars(app)["_video_info"] = VideoInfo(
+            url="u",
+            video_id="v",
+            title="T",
+            duration=120.0,
+            categories=[],
+        )
+        app.sync_stream_type_field()
+        stream_type_var.set.assert_called_once_with("Gaming")
+
+    def test_uses_first_when_multiple_categories(
+        self, app_for_stream_type_sync: tuple[MainApp, MagicMock]
+    ) -> None:
+        """First category wins when metadata has more than one."""
+        app, stream_type_var = app_for_stream_type_sync
+        vars(app)["_video_info"] = VideoInfo(
+            url="u",
+            video_id="v",
+            title="T",
+            duration=120.0,
+            categories=["Entertainment", "Comedy"],
+        )
+        app.sync_stream_type_field()
+        stream_type_var.set.assert_called_once_with("Entertainment")
+
+    def test_no_op_when_no_video_fetched(
+        self, app_for_stream_type_sync: tuple[MainApp, MagicMock]
+    ) -> None:
+        """Field is left untouched before any video has been fetched."""
+        app, stream_type_var = app_for_stream_type_sync
+        app.sync_stream_type_field()
+        stream_type_var.set.assert_not_called()
