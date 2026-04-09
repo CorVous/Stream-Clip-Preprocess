@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import httpx
 import yt_dlp  # type: ignore[import-untyped]
 
+from stream_clip_preprocess.ffmpeg import get_ffmpeg_exe
 from stream_clip_preprocess.models import VideoInfo
 from stream_clip_preprocess.sanitize import sanitize_filename
 
@@ -167,6 +168,7 @@ class VideoDownloader:
             "outtmpl": output_template,
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "merge_output_format": "mp4",
+            "ffmpeg_location": get_ffmpeg_exe(),
             "progress_hooks": [_hook],
         }
 

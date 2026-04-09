@@ -23,7 +23,7 @@ def get_ffmpeg_exe() -> str:
         binaries_dir = meipass / "imageio_ffmpeg" / "binaries"
         if binaries_dir.is_dir():
             for candidate in binaries_dir.iterdir():
-                if candidate.is_file():
+                if candidate.is_file() and candidate.stem.startswith("ffmpeg"):
                     return str(candidate)
         msg = f"ffmpeg binary not found in frozen bundle: {binaries_dir}"
         raise FileNotFoundError(msg)
