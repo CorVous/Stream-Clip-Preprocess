@@ -489,14 +489,21 @@ class MainApp(ctk.CTk):
         self._download_progress.set(0)
         self._fetch_btn.configure(state="normal")
 
-        # Pre-fill game name if the video has one
-        if self._video_info and self._video_info.game:
-            self._game_name_var.set(self._video_info.game)
-
+        self.sync_game_field()
         self._update_section_states()
 
         # Kick off video download concurrently
         self._start_background_download()
+
+    def sync_game_field(self) -> None:
+        """Sync the game name entry from the current video metadata.
+
+        Sets the field to the game name when metadata is available, or clears
+        it to an empty string when the fetched video has no game.  Does nothing
+        if no video has been fetched yet.
+        """
+        if self._video_info is not None:
+            self._game_name_var.set(self._video_info.game or "")
 
     def _after_fetch_error(self, exc: Exception) -> None:
         """Update UI after failed fetch (called on main thread)."""
