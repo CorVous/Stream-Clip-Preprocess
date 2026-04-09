@@ -26,6 +26,7 @@ class VideoInfo:
     title: str
     duration: float
     game: str | None = None
+    categories: list[str] = field(default_factory=list)
     local_path: Path | None = None
 
 

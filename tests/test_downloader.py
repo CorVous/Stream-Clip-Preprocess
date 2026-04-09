@@ -151,6 +151,58 @@ class TestVideoDownloader:
 
         assert info.game is None
 
+    def test_get_info_extracts_categories(self) -> None:
+        """Test get_info extracts categories list from yt-dlp metadata."""
+        fake_info = {
+            "id": "stream123",
+            "title": "Gaming stream",
+            "duration": 7200,
+            "webpage_url": "https://www.youtube.com/watch?v=stream123",
+            "categories": ["Gaming"],
+            "game": "Minecraft",
+        }
+        with patch(
+            "stream_clip_preprocess.downloader.yt_dlp.YoutubeDL",
+        ) as mock_ydl:
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+
+            downloader = VideoDownloader()
+            info = downloader.get_info("https://www.youtube.com/watch?v=stream123")
+
+        assert info.categories == ["Gaming"]
+
+    def test_get_info_categories_empty_when_absent(self) -> None:
+        """Test get_info returns empty categories when not in metadata."""
+        fake_info = {
+            "id": "dQw4w9WgXcQ",
+            "title": "Rick Astley - Never Gonna Give You Up",
+            "duration": 212,
+            "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        }
+        with (
+            patch(
+                "stream_clip_preprocess.downloader.yt_dlp.YoutubeDL",
+            ) as mock_ydl,
+            patch(
+                "stream_clip_preprocess.downloader.extract_game_from_youtube",
+                return_value=None,
+            ),
+        ):
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=False)
+            mock_instance.extract_info.return_value = fake_info
+            mock_ydl.return_value = mock_instance
+
+            downloader = VideoDownloader()
+            info = downloader.get_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+        assert info.categories == []
+
     def test_get_info_raises_on_failure(self) -> None:
         """Test DownloadError raised when yt-dlp fails."""
         with patch("stream_clip_preprocess.downloader.yt_dlp.YoutubeDL") as mock_ydl:

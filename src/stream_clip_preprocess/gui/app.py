@@ -52,6 +52,25 @@ _logger = logging.getLogger(__name__)
 _DISABLED_LABEL_COLOR = "gray50"
 _NORMAL_LABEL_COLOR = ("gray10", "gray90")  # (light_mode, dark_mode)
 
+# YouTube video categories (YouTube Data API v3)
+_YOUTUBE_CATEGORIES: list[str] = [
+    "Film & Animation",
+    "Autos & Vehicles",
+    "Music",
+    "Pets & Animals",
+    "Sports",
+    "Travel & Events",
+    "Gaming",
+    "People & Blogs",
+    "Comedy",
+    "Entertainment",
+    "News & Politics",
+    "Howto & Style",
+    "Education",
+    "Science & Technology",
+    "Nonprofits & Activism",
+]
+
 
 class MainApp(ctk.CTk):
     """Main application window."""
@@ -278,7 +297,7 @@ class MainApp(ctk.CTk):
         self._stream_type = ctk.CTkOptionMenu(
             row1,
             variable=self._stream_type_var,
-            values=["Gaming", "Just Chatting", "IRL", "Creative", "Other"],
+            values=_YOUTUBE_CATEGORIES,
         )
         self._stream_type.pack(side="left", padx=8)
 
@@ -490,6 +509,7 @@ class MainApp(ctk.CTk):
         self._fetch_btn.configure(state="normal")
 
         self.sync_game_field()
+        self.sync_stream_type_field()
         self._update_section_states()
 
         # Kick off video download concurrently
@@ -504,6 +524,17 @@ class MainApp(ctk.CTk):
         """
         if self._video_info is not None:
             self._game_name_var.set(self._video_info.game or "")
+
+    def sync_stream_type_field(self) -> None:
+        """Sync the stream type dropdown from the current video metadata.
+
+        Sets the dropdown to the first YouTube category when metadata is
+        available, or falls back to "Gaming" when no category is present.
+        Does nothing if no video has been fetched yet.
+        """
+        if self._video_info is not None:
+            cats = self._video_info.categories
+            self._stream_type_var.set(cats[0] if cats else "Gaming")
 
     def _after_fetch_error(self, exc: Exception) -> None:
         """Update UI after failed fetch (called on main thread)."""
