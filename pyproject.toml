@@ -159,3 +159,10 @@ include = ["debug_*.py"]
 [tool.ty.overrides.rules]
 unresolved-import = "ignore"
 unresolved-attribute = "ignore"
+
+[[tool.ty.overrides]]
+# llama-cpp-python is an optional dependency; not installed in dev venv
+include = ["src/stream_clip_preprocess/llm/local.py"]
+
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
