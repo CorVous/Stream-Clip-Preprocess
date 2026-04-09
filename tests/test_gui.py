@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,6 +15,10 @@ from stream_clip_preprocess.gui.state import (
     ThrottledCallback,
     run_in_background,
 )
+from stream_clip_preprocess.models import VideoInfo
+
+if TYPE_CHECKING:
+    from stream_clip_preprocess.gui.app import MainApp
 
 _TKINTER_AVAILABLE = True
 try:
@@ -334,3 +339,66 @@ class TestThrottledCallback:
         """Default min_interval should be a reasonable value (≥100ms)."""
         throttled = ThrottledCallback(lambda: None)
         assert throttled._min_interval >= 0.1  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# sync_game_field — game field synchronisation
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def app_for_game_sync() -> tuple[MainApp, MagicMock]:
+    """Return a bare MainApp and a direct reference to its game-name mock.
+
+    Uses object.__new__ to bypass __init__ (no tkinter needed) and vars() to
+    wire up only the two attributes that sync_game_field touches.  The mock
+    is returned directly so tests can assert on it without any private
+    dotted-attribute access.
+    """
+    from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+    app: MainApp = object.__new__(MainApp)
+    game_name_var: MagicMock = MagicMock()
+    vars(app).update({
+        "_video_info": None,
+        "_game_name_var": game_name_var,
+    })
+    return app, game_name_var
+
+
+class TestSyncGameField:
+    """Tests for MainApp.sync_game_field."""
+
+    def test_clears_field_when_video_has_no_game(
+        self, app_for_game_sync: tuple[MainApp, MagicMock]
+    ) -> None:
+        """Field must be set to empty string when video_info.game is None.
+
+        Without the fix the field was only written when game was truthy, so a
+        stale value from a previous fetch would persist across re-fetches.
+        """
+        app, game_var = app_for_game_sync
+        vars(app)["_video_info"] = VideoInfo(
+            url="u", video_id="v", title="T", duration=120.0, game=None
+        )
+        app.sync_game_field()
+        game_var.set.assert_called_once_with("")
+
+    def test_sets_field_when_video_has_game(
+        self, app_for_game_sync: tuple[MainApp, MagicMock]
+    ) -> None:
+        """Field is populated with the game name from metadata."""
+        app, game_var = app_for_game_sync
+        vars(app)["_video_info"] = VideoInfo(
+            url="u", video_id="v", title="T", duration=120.0, game="Minecraft"
+        )
+        app.sync_game_field()
+        game_var.set.assert_called_once_with("Minecraft")
+
+    def test_no_op_when_no_video_fetched(
+        self, app_for_game_sync: tuple[MainApp, MagicMock]
+    ) -> None:
+        """Field is left untouched before any video has been fetched."""
+        app, game_var = app_for_game_sync
+        app.sync_game_field()
+        game_var.set.assert_not_called()

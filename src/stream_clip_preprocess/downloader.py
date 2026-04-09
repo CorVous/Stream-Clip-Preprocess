@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import httpx
 import yt_dlp  # type: ignore[import-untyped]
 
 from stream_clip_preprocess.models import VideoInfo
@@ -16,6 +19,44 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _logger = logging.getLogger(__name__)
+
+
+def extract_game_from_youtube(url: str) -> str | None:
+    """Extract the game name from a YouTube video's page metadata.
+
+    YouTube embeds structured game information inside ``ytInitialData`` as a
+    ``videoAttributesSectionViewModel`` with ``headerTitle`` set to
+    ``"Games"``.  This function fetches the page and parses that section.
+
+    :param url: Full YouTube video URL
+    :return: Game name, or *None* if absent or on any error
+    """
+    try:
+        resp = httpx.get(
+            url,
+            follow_redirects=True,
+            headers={"Accept-Language": "en"},
+            timeout=10,
+        )
+        match = re.search(r"ytInitialData\s*=\s*(\{.+?\});", resp.text)
+        if not match:
+            return None
+
+        data = json.loads(match.group(1))
+        for panel in data.get("engagementPanels", []):
+            renderer = panel.get("engagementPanelSectionListRenderer", {})
+            content = renderer.get("content", {})
+            desc = content.get("structuredDescriptionContentRenderer", {})
+            for item in desc.get("items", []):
+                attrs = item.get("videoAttributesSectionViewModel")
+                if attrs and attrs.get("headerTitle") == "Games":
+                    models = attrs.get("videoAttributeViewModels", [])
+                    if models:
+                        return models[0].get("videoAttributeViewModel", {}).get("title")
+    except Exception:
+        _logger.debug("Failed to extract game from YouTube page", exc_info=True)
+
+    return None
 
 
 @dataclass
@@ -50,12 +91,17 @@ class VideoDownloader:
             msg = f"Failed to fetch video info for {url!r}: {exc}"
             raise DownloadError(msg) from exc
 
+        game = info.get("game")
+        if not game:
+            webpage_url = info.get("webpage_url", url)
+            game = extract_game_from_youtube(webpage_url)
+
         return VideoInfo(
             url=info.get("webpage_url", url),
             video_id=info["id"],
             title=info.get("title", "Unknown"),
             duration=float(info.get("duration", 0)),
-            game=info.get("game"),
+            game=game,
         )
 
     def download(
