@@ -102,6 +102,7 @@ class VideoDownloader:
             title=info.get("title", "Unknown"),
             duration=float(info.get("duration", 0)),
             game=game,
+            categories=info.get("categories") or [],
         )
 
     def download(
@@ -185,6 +186,7 @@ class VideoDownloader:
             title=info.get("title", "Unknown"),
             duration=float(info.get("duration", 0)),
             game=info.get("game"),
+            categories=info.get("categories") or [],
             local_path=local_path,
         )
 

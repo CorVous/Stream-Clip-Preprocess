@@ -92,6 +92,27 @@ class TestVideoInfo:
         )
         assert info.local_path == video_file
 
+    def test_categories_default_empty(self) -> None:
+        """Test categories defaults to empty list."""
+        info = VideoInfo(
+            url="https://www.youtube.com/watch?v=abc",
+            video_id="abc",
+            title="Test",
+            duration=100,
+        )
+        assert info.categories == []
+
+    def test_categories_can_be_set(self) -> None:
+        """Test categories can be set to a list of strings."""
+        info = VideoInfo(
+            url="https://www.youtube.com/watch?v=abc",
+            video_id="abc",
+            title="Test",
+            duration=100,
+            categories=["Gaming"],
+        )
+        assert info.categories == ["Gaming"]
+
 
 # ---------------------------------------------------------------------------
 # TranscriptSegment
