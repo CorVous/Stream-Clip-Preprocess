@@ -110,6 +110,14 @@ jobs:
           path: ${{ matrix.dist_path }}
           if-no-files-found: warn
 
+      - name: Upload macOS DMG
+        if: matrix.platform == 'macos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stream-Clip-Preprocess.dmg
+          path: dist/Stream-Clip-Preprocess.dmg
+          if-no-files-found: warn
+
   publish-release:
     needs: build-executables
     runs-on: ubuntu-latest
@@ -131,6 +139,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: stream-clip-preprocess-macos
+          path: dist/
+
+      - name: Download macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: Stream-Clip-Preprocess.dmg
           path: dist/
 
       - name: Upload artifacts to GitHub Release
