@@ -10,7 +10,7 @@ import logging
 import sys
 
 from stream_clip_preprocess import __version__
-from stream_clip_preprocess.commands import version_cmd
+from stream_clip_preprocess.commands import gui_cmd, version_cmd
 
 # Get package name dynamically from installed metadata
 try:
@@ -89,6 +89,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # Register subcommands
+    gui_cmd.add_parser(subparsers, common_parser)
     version_cmd.add_parser(subparsers, common_parser)
 
     return parser

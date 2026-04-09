@@ -11,3 +11,6 @@ wheels/
 
 # Auto-generated version file
 src/*/_version.py
+
+# User settings (may contain API keys)
+settings.json

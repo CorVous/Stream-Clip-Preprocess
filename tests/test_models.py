@@ -49,6 +49,27 @@ class TestVideoInfo:
         )
         assert info.duration == pytest.approx(3661.5)
 
+    def test_game_default_none(self) -> None:
+        """Test game defaults to None."""
+        info = VideoInfo(
+            url="https://www.youtube.com/watch?v=abc",
+            video_id="abc",
+            title="Test",
+            duration=100,
+        )
+        assert info.game is None
+
+    def test_game_can_be_set(self) -> None:
+        """Test game can be set to a string."""
+        info = VideoInfo(
+            url="https://www.youtube.com/watch?v=abc",
+            video_id="abc",
+            title="Test",
+            duration=100,
+            game="Minecraft",
+        )
+        assert info.game == "Minecraft"
+
     def test_optional_local_path_default_none(self) -> None:
         """Test local_path defaults to None."""
         info = VideoInfo(
@@ -93,22 +114,20 @@ class TestTranscriptSegment:
         assert seg.end == pytest.approx(15.0)
 
     def test_format_timestamp_minutes(self) -> None:
-        """Test timestamp formatting for LLM prompt (minutes only)."""
+        """Test timestamp formatting uses raw seconds for LLM prompt."""
         seg = TranscriptSegment(
             text="Something funny happened",
             start=125.0,
             duration=3.0,
         )
         formatted = seg.format_timestamp()
-        assert "Something funny happened" in formatted
-        assert "2:05" in formatted or "02:05" in formatted
+        assert formatted == "[125] Something funny happened"
 
     def test_format_timestamp_hours(self) -> None:
-        """Test timestamp formatting for LLM prompt (hours)."""
+        """Test timestamp formatting uses raw seconds for long timestamps."""
         seg = TranscriptSegment(text="Late game clip", start=3723.0, duration=2.0)
         formatted = seg.format_timestamp()
-        assert "Late game clip" in formatted
-        assert "1:02:03" in formatted
+        assert formatted == "[3723] Late game clip"
 
 
 # ---------------------------------------------------------------------------
@@ -154,10 +173,35 @@ class TestMoment:
         assert "dQw4w9WgXcQ" in url
         assert "t=125" in url
 
+    def test_youtube_url_seconds_only(self) -> None:
+        """start=5 → t=5, matching display 00:00:05."""
+        moment = Moment(start=5.0, end=10.0, summary="Test", clip_name="test")
+        url = moment.build_youtube_url("abc123")
+        assert "t=5" in url
+
+    def test_youtube_url_hours(self) -> None:
+        """start=3723 → t=3723, matching display 01:02:03."""
+        moment = Moment(start=3723.0, end=3800.0, summary="Test", clip_name="test")
+        url = moment.build_youtube_url("abc123")
+        assert "t=3723" in url
+
     def test_selected_default_true(self) -> None:
         """Test selected defaults to True."""
         moment = Moment(start=0.0, end=10.0, summary="Test", clip_name="test")
         assert moment.selected is True
+
+    def test_description_default_empty(self) -> None:
+        """Test description defaults to empty string."""
+        moment = Moment(start=0.0, end=10.0, summary="Test", clip_name="test")
+        assert not moment.description
+
+    def test_description_can_be_set(self) -> None:
+        """Test description can be set to a long string."""
+        desc = "The streamer was playing a difficult level and kept failing."
+        moment = Moment(
+            start=0.0, end=10.0, summary="Test", clip_name="test", description=desc
+        )
+        assert moment.description == desc
 
 
 # ---------------------------------------------------------------------------

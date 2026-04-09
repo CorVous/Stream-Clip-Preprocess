@@ -87,7 +87,11 @@ class ProgressSection(ctk.CTkFrame):
 
 
 class MomentRow(ctk.CTkFrame):
-    """A single moment row in the moments checklist."""
+    """A single moment row in the moments checklist.
+
+    Uses a two-row layout: a top bar with checkbox, time range, and link
+    button, followed by a wrapping summary label below.
+    """
 
     def __init__(
         self,
@@ -108,24 +112,35 @@ class MomentRow(ctk.CTkFrame):
         """
         super().__init__(master, **kwargs)
 
+        # Top bar: checkbox | time range | youtube button
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x")
+
         self._var = ctk.BooleanVar(value=True)
-        self._check = ctk.CTkCheckBox(self, text="", variable=self._var)
+        self._check = ctk.CTkCheckBox(top, text="", variable=self._var)
         self._check.pack(side="left", padx=(4, 0))
 
-        self._summary_label = ctk.CTkLabel(self, text=summary, anchor="w")
-        self._summary_label.pack(side="left", fill="x", expand=True, padx=4)
-
-        self._time_label = ctk.CTkLabel(self, text=time_range, width=100)
-        self._time_label.pack(side="left", padx=4)
+        self._time_label = ctk.CTkLabel(top, text=time_range)
+        self._time_label.pack(side="left", padx=(2, 8))
 
         if youtube_url and on_link_click:
             self._link_btn = ctk.CTkButton(
-                self,
-                text="▶",
-                width=32,
+                top,
+                text="Open YouTube",
+                width=100,
                 command=lambda url=youtube_url: on_link_click(url),
             )
-            self._link_btn.pack(side="left", padx=4)
+            self._link_btn.pack(side="right", padx=4)
+
+        # Summary label: wraps to multiple lines
+        self._summary_label = ctk.CTkLabel(
+            self,
+            text=summary,
+            anchor="w",
+            justify="left",
+            wraplength=600,
+        )
+        self._summary_label.pack(fill="x", padx=(36, 8), pady=(0, 4))
 
     @property
     def selected(self) -> bool:

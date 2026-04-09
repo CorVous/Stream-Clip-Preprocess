@@ -6,8 +6,7 @@ import logging
 import re
 
 from youtube_transcript_api import (  # type: ignore[import-untyped]
-    NoTranscriptFound,
-    VideoUnavailable,
+    CouldNotRetrieveTranscript,
     YouTubeTranscriptApi,
 )
 
@@ -64,10 +63,14 @@ class TranscriptFetcher:
 
         :param languages: Ordered list of preferred language codes, e.g. ["en", "fr"]
         """
-        self.languages = languages
+        self.languages = languages or ["en"]
+        self._api = YouTubeTranscriptApi()
 
     def fetch(self, video_id: str) -> list[TranscriptSegment]:
         """Fetch transcript for a given video ID.
+
+        Tries manual captions first with the preferred languages, then
+        falls back to any available auto-generated transcript.
 
         :param video_id: YouTube video ID
         :return: List of TranscriptSegment objects
@@ -75,21 +78,49 @@ class TranscriptFetcher:
         """
         _logger.debug("Fetching transcript for video_id=%s", video_id)
         try:
-            kwargs: dict[str, list[str]] = {}
-            if self.languages:
-                kwargs["languages"] = self.languages
-            raw = YouTubeTranscriptApi.get_transcript(video_id, **kwargs)
-        except (NoTranscriptFound, VideoUnavailable) as exc:
+            transcript_list = self._api.list(video_id)
+        except CouldNotRetrieveTranscript as exc:
             msg = f"No transcript available for video {video_id!r}"
             raise NoTranscriptError(msg) from exc
 
+        raw = None
+
+        # Try manual transcripts in preferred languages
+        try:
+            raw = transcript_list.find_manually_created_transcript(
+                self.languages,
+            ).fetch()
+        except CouldNotRetrieveTranscript:
+            _logger.debug("No manual transcript found, trying generated")
+
+        # Fall back to auto-generated transcripts
+        if raw is None:
+            try:
+                raw = transcript_list.find_generated_transcript(
+                    self.languages,
+                ).fetch()
+            except CouldNotRetrieveTranscript:
+                _logger.debug(
+                    "No generated transcript in %s, trying any",
+                    self.languages,
+                )
+
+        # Last resort: grab whatever transcript is available
+        if raw is None:
+            try:
+                first = next(iter(transcript_list))
+                raw = first.fetch()
+            except (StopIteration, CouldNotRetrieveTranscript) as exc:
+                msg = f"No transcript available for video {video_id!r}"
+                raise NoTranscriptError(msg) from exc
+
         return [
             TranscriptSegment(
-                text=entry["text"],
+                text=str(entry["text"]),
                 start=float(entry["start"]),
                 duration=float(entry["duration"]),
             )
-            for entry in raw
+            for entry in raw.to_raw_data()
         ]
 
     def fetch_by_url(self, url: str) -> list[TranscriptSegment]:
@@ -107,7 +138,7 @@ class TranscriptFetcher:
 def format_transcript_for_llm(segments: list[TranscriptSegment]) -> str:
     """Format a list of transcript segments into a string for LLM consumption.
 
-    Each segment is formatted as '[MM:SS] text' on its own line.
+    Each segment is formatted as '[<seconds>] text' on its own line.
 
     :param segments: List of transcript segments
     :return: Formatted transcript string
