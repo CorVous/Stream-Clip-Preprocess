@@ -342,6 +342,184 @@ class TestThrottledCallback:
 
 
 # ---------------------------------------------------------------------------
+# Section dim colors
+# ---------------------------------------------------------------------------
+
+
+class TestSectionDimColors:
+    """Tests for section frame dimming color constants in themes."""
+
+    def test_section_fg_normal_exists(self) -> None:
+        """SECTION_FG_COLOR_NORMAL should be importable from themes."""
+        from stream_clip_preprocess.gui.themes import (  # noqa: PLC0415
+            SECTION_FG_COLOR_NORMAL,
+        )
+
+        assert SECTION_FG_COLOR_NORMAL is not None
+
+    def test_section_fg_disabled_exists(self) -> None:
+        """SECTION_FG_COLOR_DISABLED should be importable from themes."""
+        from stream_clip_preprocess.gui.themes import (  # noqa: PLC0415
+            SECTION_FG_COLOR_DISABLED,
+        )
+
+        assert SECTION_FG_COLOR_DISABLED is not None
+
+    def test_section_fg_normal_is_two_tuple(self) -> None:
+        """Normal section color should be a (light_mode, dark_mode) 2-tuple."""
+        from stream_clip_preprocess.gui.themes import (  # noqa: PLC0415
+            SECTION_FG_COLOR_NORMAL,
+        )
+
+        assert isinstance(SECTION_FG_COLOR_NORMAL, tuple)
+        assert len(SECTION_FG_COLOR_NORMAL) == 2
+
+    def test_section_fg_disabled_is_two_tuple(self) -> None:
+        """Disabled section color should be a (light_mode, dark_mode) 2-tuple."""
+        from stream_clip_preprocess.gui.themes import (  # noqa: PLC0415
+            SECTION_FG_COLOR_DISABLED,
+        )
+
+        assert isinstance(SECTION_FG_COLOR_DISABLED, tuple)
+        assert len(SECTION_FG_COLOR_DISABLED) == 2
+
+    def test_disabled_darker_than_normal_dark_mode(self) -> None:
+        """Disabled gray should be a lower number (darker) than normal in dark mode."""
+        from stream_clip_preprocess.gui.themes import (  # noqa: PLC0415
+            SECTION_FG_COLOR_DISABLED,
+            SECTION_FG_COLOR_NORMAL,
+        )
+
+        normal_val = int(SECTION_FG_COLOR_NORMAL[1].replace("gray", ""))
+        disabled_val = int(SECTION_FG_COLOR_DISABLED[1].replace("gray", ""))
+        assert disabled_val < normal_val
+
+    def test_disabled_darker_than_normal_light_mode(self) -> None:
+        """Disabled gray should be a lower number (darker) than normal in light mode."""
+        from stream_clip_preprocess.gui.themes import (  # noqa: PLC0415
+            SECTION_FG_COLOR_DISABLED,
+            SECTION_FG_COLOR_NORMAL,
+        )
+
+        normal_val = int(SECTION_FG_COLOR_NORMAL[0].replace("gray", ""))
+        disabled_val = int(SECTION_FG_COLOR_DISABLED[0].replace("gray", ""))
+        assert disabled_val < normal_val
+
+    def test_label_color_constants_in_themes(self) -> None:
+        """DISABLED_LABEL_COLOR and NORMAL_LABEL_COLOR should live in themes."""
+        from stream_clip_preprocess.gui import themes  # noqa: PLC0415
+
+        assert hasattr(themes, "DISABLED_LABEL_COLOR")
+        assert hasattr(themes, "NORMAL_LABEL_COLOR")
+
+
+# ---------------------------------------------------------------------------
+# _section_fg_color helper
+# ---------------------------------------------------------------------------
+
+
+@_skip_no_tk
+class TestSectionFgColor:
+    """Tests for MainApp._section_fg_color static helper."""
+
+    def test_normal_state_returns_normal_color(self) -> None:
+        """'normal' state should return SECTION_FG_COLOR_NORMAL."""
+        from stream_clip_preprocess.gui import themes  # noqa: PLC0415
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        assert MainApp._section_fg_color("normal") == themes.SECTION_FG_COLOR_NORMAL  # noqa: SLF001
+
+    def test_disabled_state_returns_disabled_color(self) -> None:
+        """'disabled' state should return SECTION_FG_COLOR_DISABLED."""
+        from stream_clip_preprocess.gui import themes  # noqa: PLC0415
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        assert MainApp._section_fg_color("disabled") == themes.SECTION_FG_COLOR_DISABLED  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# _set_frame_children_state — text dimming for all widget types
+# ---------------------------------------------------------------------------
+
+
+@_skip_no_tk
+class TestFrameChildrenTextDimming:
+    """Tests that _set_frame_children_state dims text on all widget types."""
+
+    def test_non_label_child_text_color_dimmed_when_disabled(self) -> None:
+        """Any child widget with text_color should be dimmed when disabled."""
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        import customtkinter as ctk  # noqa: PLC0415
+
+        from stream_clip_preprocess.gui import themes  # noqa: PLC0415
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        mock_child = MagicMock()
+        mock_frame = MagicMock(spec=ctk.CTkFrame)
+        mock_frame.winfo_children.return_value = [mock_child]
+
+        MainApp._set_frame_children_state(mock_frame, "disabled")  # noqa: SLF001
+
+        mock_child.configure.assert_any_call(text_color=themes.DISABLED_LABEL_COLOR)
+
+    def test_non_label_child_text_color_restored_when_enabled(self) -> None:
+        """Any child widget with text_color should be restored when enabled."""
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        import customtkinter as ctk  # noqa: PLC0415
+
+        from stream_clip_preprocess.gui import themes  # noqa: PLC0415
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        mock_child = MagicMock()
+        mock_frame = MagicMock(spec=ctk.CTkFrame)
+        mock_frame.winfo_children.return_value = [mock_child]
+
+        MainApp._set_frame_children_state(mock_frame, "normal")  # noqa: SLF001
+
+        mock_child.configure.assert_any_call(text_color=themes.NORMAL_LABEL_COLOR)
+
+    def test_text_color_disabled_dimmed_when_section_disabled(self) -> None:
+        """Widgets supporting text_color_disabled should also be dimmed."""
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        import customtkinter as ctk  # noqa: PLC0415
+
+        from stream_clip_preprocess.gui import themes  # noqa: PLC0415
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        mock_child = MagicMock()
+        mock_frame = MagicMock(spec=ctk.CTkFrame)
+        mock_frame.winfo_children.return_value = [mock_child]
+
+        MainApp._set_frame_children_state(mock_frame, "disabled")  # noqa: SLF001
+
+        mock_child.configure.assert_any_call(
+            text_color_disabled=themes.DISABLED_LABEL_COLOR
+        )
+
+    def test_text_color_disabled_restored_when_section_enabled(self) -> None:
+        """text_color_disabled should be restored to normal on enable."""
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        import customtkinter as ctk  # noqa: PLC0415
+
+        from stream_clip_preprocess.gui import themes  # noqa: PLC0415
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        mock_child = MagicMock()
+        mock_frame = MagicMock(spec=ctk.CTkFrame)
+        mock_frame.winfo_children.return_value = [mock_child]
+
+        MainApp._set_frame_children_state(mock_frame, "normal")  # noqa: SLF001
+
+        mock_child.configure.assert_any_call(
+            text_color_disabled=themes.NORMAL_LABEL_COLOR
+        )
+
+
+# ---------------------------------------------------------------------------
 # sync_game_field — game field synchronisation
 # ---------------------------------------------------------------------------
 

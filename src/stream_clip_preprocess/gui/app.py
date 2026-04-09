@@ -48,10 +48,6 @@ __all__ = ["AppState", "MainApp", "launch", "run_in_background"]
 
 _logger = logging.getLogger(__name__)
 
-# Color used to dim disabled section labels
-_DISABLED_LABEL_COLOR = "gray50"
-_NORMAL_LABEL_COLOR = ("gray10", "gray90")  # (light_mode, dark_mode)
-
 
 class MainApp(ctk.CTk):
     """Main application window."""
@@ -270,7 +266,7 @@ class MainApp(ctk.CTk):
             self._step2_frame, text="Step 2: Context", font=themes.FONT_TITLE
         ).pack(anchor="w", padx=themes.PAD_X, pady=(themes.PAD_Y, 0))
 
-        row1 = ctk.CTkFrame(self._step2_frame)
+        row1 = ctk.CTkFrame(self._step2_frame, fg_color="transparent")
         row1.pack(fill="x", padx=themes.PAD_X, pady=themes.PAD_Y)
 
         ctk.CTkLabel(row1, text="Stream type:").pack(side="left")
@@ -321,7 +317,7 @@ class MainApp(ctk.CTk):
             self._step3_frame, text="Step 3: Moments", font=themes.FONT_TITLE
         ).pack(anchor="w", padx=themes.PAD_X, pady=(themes.PAD_Y, 0))
 
-        btn_row = ctk.CTkFrame(self._step3_frame)
+        btn_row = ctk.CTkFrame(self._step3_frame, fg_color="transparent")
         btn_row.pack(fill="x", padx=themes.PAD_X)
 
         self._select_all_btn = ctk.CTkButton(
@@ -348,7 +344,7 @@ class MainApp(ctk.CTk):
             self._step4_frame, text="Step 4: Export", font=themes.FONT_TITLE
         ).pack(anchor="w", padx=themes.PAD_X, pady=(themes.PAD_Y, 0))
 
-        row = ctk.CTkFrame(self._step4_frame)
+        row = ctk.CTkFrame(self._step4_frame, fg_color="transparent")
         row.pack(fill="x", padx=themes.PAD_X, pady=themes.PAD_Y)
 
         ctk.CTkLabel(row, text="Padding (seconds):").pack(side="left")
@@ -382,23 +378,42 @@ class MainApp(ctk.CTk):
         self._clip_status = ctk.CTkLabel(self._step4_frame, text="")
         self._clip_status.pack(anchor="w", padx=themes.PAD_X, pady=(0, themes.PAD_Y))
 
+    @staticmethod
+    def _section_fg_color(state: str) -> tuple[str, str]:
+        """Return the section frame fg_color for the given widget state.
+
+        :param state: Widget state string, either ``"normal"`` or ``"disabled"``.
+        :return: A ``(light_mode, dark_mode)`` color tuple for the frame.
+        """
+        if state == "normal":
+            return themes.SECTION_FG_COLOR_NORMAL
+        return themes.SECTION_FG_COLOR_DISABLED
+
     @classmethod
     def _set_frame_children_state(cls, frame: ctk.CTkFrame, state: str) -> None:
         """Recursively enable or disable all interactive children of a frame."""
+        color: str | tuple[str, str] = (
+            themes.DISABLED_LABEL_COLOR
+            if state == "disabled"
+            else themes.NORMAL_LABEL_COLOR
+        )
         for child in frame.winfo_children():
             # Recurse into sub-frames so nested rows are reached
             if isinstance(child, ctk.CTkFrame):
                 cls._set_frame_children_state(child, state)
             with contextlib.suppress(ValueError, TypeError):
                 child.configure(state=state)
-            # Dim label text when disabled
-            if isinstance(child, ctk.CTkLabel):
-                color = (
-                    _DISABLED_LABEL_COLOR
-                    if state == "disabled"
-                    else _NORMAL_LABEL_COLOR
-                )
+            # Dim text_color for all CTk widgets (labels, buttons, etc.).
+            # Suppress Exception broadly: plain tkinter widgets inside
+            # CTkScrollableFrame raise TclError for unknown options.
+            with contextlib.suppress(Exception):
                 child.configure(text_color=color)
+            # Also dim text_color_disabled so entries/option-menus/checkboxes
+            # show the dimmed color even while in the "disabled" widget state.
+            # (tk.Text inside CTkTextbox uses fg for all states, so text_color
+            # above is sufficient for textboxes — no separate handling needed.)
+            with contextlib.suppress(Exception):
+                child.configure(text_color_disabled=color)
 
     def _update_section_states(self) -> None:
         """Enable/disable sections based on current state."""
@@ -408,6 +423,7 @@ class MainApp(ctk.CTk):
             else "disabled"
         )
         self._set_frame_children_state(self._step2_frame, step2_state)
+        self._step2_frame.configure(fg_color=self._section_fg_color(step2_state))
 
         step3_state = (
             "normal"
@@ -416,6 +432,10 @@ class MainApp(ctk.CTk):
         )
         self._set_frame_children_state(self._step3_frame, step3_state)
         self._set_frame_children_state(self._step4_frame, step3_state)
+        step3_fg = self._section_fg_color(step3_state)
+        self._step3_frame.configure(fg_color=step3_fg)
+        self._moments_scroll.configure(fg_color=step3_fg)
+        self._step4_frame.configure(fg_color=self._section_fg_color(step3_state))
 
     # ------------------------------------------------------------------
     # Event handlers
