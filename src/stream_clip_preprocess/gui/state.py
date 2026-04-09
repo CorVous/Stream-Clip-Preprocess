@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import logging
 import threading
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -53,3 +54,31 @@ def run_in_background(
     t = threading.Thread(target=_target, daemon=True)
     t.start()
     return t
+
+
+class ThrottledCallback:
+    """Wraps a callback so it fires at most once per *min_interval* seconds.
+
+    Designed for background-thread progress hooks that fire very frequently
+    (e.g. yt-dlp chunk callbacks).  Only the most recent arguments are
+    forwarded; intermediate values are silently dropped.
+
+    :param callback: The function to throttle
+    :param min_interval: Minimum seconds between forwarded calls
+    """
+
+    def __init__(
+        self,
+        callback: Callable[..., object],
+        min_interval: float = 0.2,
+    ) -> None:
+        self._callback = callback
+        self._min_interval = min_interval
+        self._last_call: float = 0.0
+
+    def __call__(self, *args: object, **kwargs: object) -> None:
+        """Forward the call if enough time has elapsed, else drop it."""
+        now = time.monotonic()
+        if now - self._last_call >= self._min_interval:
+            self._last_call = now
+            self._callback(*args, **kwargs)

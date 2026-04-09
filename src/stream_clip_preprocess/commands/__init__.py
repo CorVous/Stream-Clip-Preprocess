@@ -5,6 +5,7 @@ Each subcommand is defined in its own module and exports:
 - run(args): Execute the subcommand logic
 """
 
+from stream_clip_preprocess.commands import gui as gui_cmd
 from stream_clip_preprocess.commands import version as version_cmd
 
-__all__ = ["version_cmd"]
+__all__ = ["gui_cmd", "version_cmd"]

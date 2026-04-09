@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stream_clip_preprocess.gui.state import AppState, run_in_background
+from stream_clip_preprocess.gui.scroll import normalize_wheel_delta
+from stream_clip_preprocess.gui.state import (
+    AppState,
+    ThrottledCallback,
+    run_in_background,
+)
 
 _TKINTER_AVAILABLE = True
 try:
@@ -162,3 +168,169 @@ class TestGuiModuleImports:
         from stream_clip_preprocess.gui.app import launch  # noqa: PLC0415
 
         assert callable(launch)
+
+    @_skip_no_tk
+    def test_openrouter_backend_importable(self) -> None:
+        """Test that OpenRouterBackend is imported in app module."""
+        from stream_clip_preprocess.gui import app as gui_app  # noqa: PLC0415
+
+        assert hasattr(gui_app, "OpenRouterBackend")
+
+
+# ---------------------------------------------------------------------------
+# Mouse-wheel delta normalization
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeWheelDelta:
+    """Tests for normalize_wheel_delta used by the scroll-wheel fix."""
+
+    # -- macOS Tk 9+ (delta ≈ ±120 per notch) --
+
+    def test_mac_tk9_scroll_up(self) -> None:
+        """Positive delta on macOS Tk 9 → small negative scroll (up)."""
+        units = normalize_wheel_delta(120, platform="darwin")
+        assert units < 0
+        assert abs(units) <= 6
+
+    def test_mac_tk9_scroll_down(self) -> None:
+        """Negative delta on macOS Tk 9 → small positive scroll (down)."""
+        units = normalize_wheel_delta(-120, platform="darwin")
+        assert units > 0
+        assert abs(units) <= 6
+
+    def test_mac_tk9_fast_scroll(self) -> None:
+        """Larger delta (trackpad momentum) scales but stays bounded."""
+        units = normalize_wheel_delta(360, platform="darwin")
+        assert units < 0
+        assert abs(units) <= 15
+
+    # -- macOS Tk 8.6 (delta = ±1) --
+
+    def test_mac_tk86_scroll_up(self) -> None:
+        """Delta +1 (old Tk 8.6) → -1 scroll."""
+        assert normalize_wheel_delta(1, platform="darwin") == -1
+
+    def test_mac_tk86_scroll_down(self) -> None:
+        """Delta -1 (old Tk 8.6) → +1 scroll."""
+        assert normalize_wheel_delta(-1, platform="darwin") == 1
+
+    # -- zero delta --
+
+    def test_zero_delta_returns_zero(self) -> None:
+        """Zero delta produces no scroll."""
+        assert normalize_wheel_delta(0, platform="darwin") == 0
+        assert normalize_wheel_delta(0, platform="win32") == 0
+
+    # -- Windows (delta = ±120) --
+
+    def test_win_scroll_up(self) -> None:
+        """Windows positive delta → negative scroll (up)."""
+        units = normalize_wheel_delta(120, platform="win32")
+        assert units < 0
+        assert abs(units) <= 6
+
+    def test_win_scroll_down(self) -> None:
+        """Windows negative delta → positive scroll (down)."""
+        units = normalize_wheel_delta(-120, platform="win32")
+        assert units > 0
+
+    # -- Direction symmetry --
+
+    def test_mac_opposite_deltas_symmetric(self) -> None:
+        """Opposite deltas produce opposite scroll directions."""
+        up = normalize_wheel_delta(120, platform="darwin")
+        down = normalize_wheel_delta(-120, platform="darwin")
+        assert up == -down
+
+
+# ---------------------------------------------------------------------------
+# _format_time
+# ---------------------------------------------------------------------------
+
+
+@_skip_no_tk
+class TestFormatTime:
+    """Tests for MainApp._format_time static method."""
+
+    def test_format_time_seconds_only(self) -> None:
+        """Values under a minute use 00:00:SS."""
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        assert MainApp._format_time(5) == "00:00:05"  # noqa: SLF001
+
+    def test_format_time_minutes_and_seconds(self) -> None:
+        """Values under an hour use 00:MM:SS."""
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        assert MainApp._format_time(125) == "00:02:05"  # noqa: SLF001
+
+    def test_format_time_hours(self) -> None:
+        """Values over an hour use HH:MM:SS."""
+        from stream_clip_preprocess.gui.app import MainApp  # noqa: PLC0415
+
+        assert MainApp._format_time(3723) == "01:02:03"  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# ThrottledCallback
+# ---------------------------------------------------------------------------
+
+
+class TestThrottledCallback:
+    """Tests for ThrottledCallback used to debounce progress updates."""
+
+    def test_first_call_passes_through(self) -> None:
+        """First call should always be forwarded immediately."""
+        calls: list[int] = []
+        throttled = ThrottledCallback(calls.append, min_interval=1.0)
+        throttled(42)
+        assert calls == [42]
+
+    def test_rapid_calls_are_suppressed(self) -> None:
+        """Calls within the min_interval should be dropped."""
+        calls: list[int] = []
+        throttled = ThrottledCallback(calls.append, min_interval=0.5)
+        throttled(1)
+        throttled(2)
+        throttled(3)
+        # Only the first call should have been forwarded
+        assert calls == [1]
+
+    def test_call_after_interval_passes_through(self) -> None:
+        """A call after the interval elapses should be forwarded."""
+        calls: list[int] = []
+        throttled = ThrottledCallback(calls.append, min_interval=0.05)
+        throttled(1)
+        time.sleep(0.08)
+        throttled(2)
+        assert calls == [1, 2]
+
+    def test_preserves_latest_args(self) -> None:
+        """When a call passes through, it uses its own arguments."""
+        calls: list[tuple[int, str]] = []
+
+        def record(a: int, b: str) -> None:
+            calls.append((a, b))
+
+        throttled = ThrottledCallback(record, min_interval=0.05)
+        throttled(1, "a")
+        time.sleep(0.08)
+        throttled(2, "b")
+        assert calls == [(1, "a"), (2, "b")]
+
+    def test_kwargs_forwarded(self) -> None:
+        """Keyword arguments should be forwarded to the wrapped callback."""
+        calls: list[dict[str, object]] = []
+
+        def record(**kw: object) -> None:
+            calls.append(kw)
+
+        throttled = ThrottledCallback(record, min_interval=1.0)
+        throttled(x=10, y=20)
+        assert calls == [{"x": 10, "y": 20}]
+
+    def test_default_interval(self) -> None:
+        """Default min_interval should be a reasonable value (≥100ms)."""
+        throttled = ThrottledCallback(lambda: None)
+        assert throttled._min_interval >= 0.1  # noqa: SLF001

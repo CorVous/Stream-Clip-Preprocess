@@ -79,6 +79,14 @@ jobs:
       - name: Install PyInstaller
         run: uv pip install pyinstaller
 
+      - name: Install llama-cpp-python (macOS with Metal)
+        if: matrix.platform == 'macos'
+        run: CMAKE_ARGS="-DGGML_METAL=on" uv pip install llama-cpp-python
+
+      - name: Install llama-cpp-python (Windows CPU)
+        if: matrix.platform == 'windows'
+        run: uv pip install llama-cpp-python
+
       - name: Build executable
         run: uv run pyinstaller stream_clip_preprocess.spec --noconfirm
 

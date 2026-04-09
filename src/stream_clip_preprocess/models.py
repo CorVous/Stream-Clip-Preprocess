@@ -25,6 +25,7 @@ class VideoInfo:
     video_id: str
     title: str
     duration: float
+    game: str | None = None
     local_path: Path | None = None
 
 
@@ -42,15 +43,8 @@ class TranscriptSegment:
         return self.start + self.duration
 
     def format_timestamp(self) -> str:
-        """Format segment as '[MM:SS] text' for LLM consumption."""
-        total_seconds = int(self.start)
-        minutes, seconds = divmod(total_seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours:
-            ts = f"{hours}:{minutes:02d}:{seconds:02d}"
-        else:
-            ts = f"{minutes}:{seconds:02d}"
-        return f"[{ts}] {self.text}"
+        """Format segment as '[<seconds>] text' for LLM consumption."""
+        return f"[{int(self.start)}] {self.text}"
 
 
 @dataclass
@@ -61,6 +55,7 @@ class Moment:
     end: float
     summary: str
     clip_name: str
+    description: str = ""
     youtube_url: str | None = None
     selected: bool = True
 

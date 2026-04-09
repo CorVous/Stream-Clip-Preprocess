@@ -55,6 +55,7 @@ class VideoDownloader:
             video_id=info["id"],
             title=info.get("title", "Unknown"),
             duration=float(info.get("duration", 0)),
+            game=info.get("game"),
         )
 
     def download(
@@ -77,16 +78,38 @@ class VideoDownloader:
             if on_progress is None:
                 return
             status = d.get("status", "")
-            percent_str = d.get("_percent_str", "0.0%").strip().rstrip("%")
-            try:
-                percent = float(percent_str)
-            except ValueError:
-                percent = 0.0
+
+            # yt-dlp progress hooks supply raw numeric fields, not the
+            # formatted ``_*_str`` variants (those only exist in the
+            # console-display code path).  Compute percentage from
+            # downloaded_bytes / total_bytes (or total_bytes_estimate).
+            downloaded = d.get("downloaded_bytes") or 0
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            percent = (downloaded / total * 100.0) if total else 0.0
+
+            raw_speed = d.get("speed")
+            if raw_speed is not None and raw_speed > 0:
+                if raw_speed >= 1_048_576:
+                    speed = f"{raw_speed / 1_048_576:.1f} MiB/s"
+                elif raw_speed >= 1024:
+                    speed = f"{raw_speed / 1024:.1f} KiB/s"
+                else:
+                    speed = f"{raw_speed:.0f} B/s"
+            else:
+                speed = ""
+
+            raw_eta = d.get("eta")
+            if raw_eta is not None:
+                mins, secs = divmod(int(raw_eta), 60)
+                eta = f"{mins}:{secs:02d}"
+            else:
+                eta = ""
+
             on_progress(
                 DownloadProgress(
                     percent=percent,
-                    speed=d.get("_speed_str", ""),
-                    eta=d.get("_eta_str", ""),
+                    speed=speed,
+                    eta=eta,
                     status=status,
                 )
             )
@@ -115,6 +138,7 @@ class VideoDownloader:
             video_id=video_id,
             title=info.get("title", "Unknown"),
             duration=float(info.get("duration", 0)),
+            game=info.get("game"),
             local_path=local_path,
         )
 
