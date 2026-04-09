@@ -922,6 +922,16 @@ class MainApp(ctk.CTk):
             row.destroy()
         self._moment_rows.clear()
 
+        # Ensure the scrollable frame is visible (it may have been
+        # hidden by _clear_context_fields after a previous export).
+        if not self._moments_scroll.winfo_ismapped():
+            self._moments_scroll.pack(
+                fill="both",
+                expand=True,
+                padx=themes.PAD_X,
+                pady=themes.PAD_Y,
+            )
+
         for moment in self._moments:
             time_range = (
                 f"{self._format_time(moment.start)} - {self._format_time(moment.end)}"
@@ -1070,6 +1080,61 @@ class MainApp(ctk.CTk):
 
         run_in_background(_do_clip, on_done=_on_done, on_error=_on_error)
 
+    def _clear_context_fields(self) -> None:
+        """Clear non-setting fields after clip creation.
+
+        Clears all context/workflow fields (URL, stream type, game name, prompt,
+        moments) while preserving settings fields (backend, API key, output
+        directory) and padding preference.  Resets to IDLE state so the
+        existing state machine properly enables/disables all sections.
+        """
+        # Clear URL
+        self._url_var.set("")
+
+        # Clear video/transcript data so stale info is not reused
+        self._video_info = None
+        self._transcript_segments = None
+        self._transcript_from_cache = False
+
+        # Reset Step 1 status
+        self._download_progress.set(0)
+        self._download_status.configure(text="", text_color="white")
+        self._fetch_btn.configure(state="normal")
+
+        # Reset stream type to default and clear game name
+        self._stream_type_var.set("Gaming")
+        self._game_name_var.set("")
+
+        # Clear clip prompt and reset to default
+        self._prompt_text.delete("1.0", "end")
+        default_prompt = (
+            "Find the funniest, most exciting, or most notable moments. "
+            "Focus on highlights, fails, funny moments, and memorable reactions."
+        )
+        self._prompt_text.insert("1.0", default_prompt)
+
+        # Reset Step 2 status and re-enable analyze button
+        self._analyze_progress.set(0)
+        self._analyze_status.configure(text="", text_color="white")
+        self._analyze_btn.configure(state="normal")
+
+        # Clear moments — both data and UI rows, then hide the
+        # scrollable frame so its scrollbar doesn't linger.
+        for row in self._moment_rows:
+            row.destroy()
+        self._moment_rows.clear()
+        self._moments = []
+        self._moments_scroll.pack_forget()
+
+        # Reset Step 4 status
+        self._clip_progress.set(0)
+        self._clip_status.configure(text="", text_color="white")
+
+        # Reset to IDLE so _update_section_states() properly disables
+        # Steps 2, 3, and 4 via the normal state machine.
+        self._state = AppState.IDLE
+        self._update_section_states()
+
     def _update_clip_progress(self, current: int, total: int) -> None:
         """Update progress bar during clip extraction (called on main thread).
 
@@ -1096,6 +1161,8 @@ class MainApp(ctk.CTk):
                 text=f"Done! {ok} clip(s) created.",
                 text_color=themes.COLOR_SUCCESS,
             )
+            # Clear context fields after successful completion
+            self._clear_context_fields()
 
     def _after_clips_error(self, exc: Exception) -> None:
         """Update UI after clip extraction fails (called on main thread)."""

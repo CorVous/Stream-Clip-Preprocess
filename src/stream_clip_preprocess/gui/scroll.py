@@ -220,10 +220,14 @@ def _install_macos_native_monitor(
         _logger.warning("Failed to install NSEvent scroll monitor")
         return False
 
-    def _cleanup() -> None:
-        NSEvent.removeMonitor_(monitor)
+    def _cleanup(event: object) -> None:
+        # Only remove the monitor when the root window itself is destroyed.
+        # <Destroy> fires for every descendant widget — without this guard,
+        # destroying any widget (e.g. moment rows) kills the scroll monitor.
+        if getattr(event, "widget", None) is root:
+            NSEvent.removeMonitor_(monitor)
 
-    root.bind("<Destroy>", lambda _e: _cleanup(), add="+")
+    root.bind("<Destroy>", _cleanup, add="+")
 
     _poll_queue()
     _logger.debug("macOS native scroll monitor installed")
